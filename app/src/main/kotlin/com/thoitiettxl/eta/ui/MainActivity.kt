@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -30,6 +31,7 @@ class MainActivity : Activity() {
     private lateinit var pairingStore: BrowserPairingStore
     private lateinit var pairingTokenInput: EditText
     private lateinit var browserWarmupContainer: FrameLayout
+    private lateinit var controls: ScrollView
     private lateinit var status: TextView
     private lateinit var credentials: TextView
     private lateinit var clients: TextView
@@ -50,6 +52,7 @@ class MainActivity : Activity() {
         setContentView(buildContent())
         BrowserSessionEngine.setUserControlActive(false)
         BrowserSessionEngine.attachTo(browserWarmupContainer, this)
+        finishBrowserWarmupAfterDraw()
         requestNotificationPermissionIfNeeded()
     }
 
@@ -149,7 +152,7 @@ class MainActivity : Activity() {
         }
         content.addView(pageState, matchWidth())
 
-        val controls = ScrollView(this).apply {
+        controls = ScrollView(this).apply {
             setBackgroundColor(Color.WHITE)
             addView(
                 content,
@@ -161,10 +164,20 @@ class MainActivity : Activity() {
         }
         browserWarmupContainer = FrameLayout(this)
         return FrameLayout(this).apply {
-            // Keep the shared WebView attached behind the opaque controls so its rendering
-            // surface is initialized before the first external screenshot request.
-            addView(browserWarmupContainer, matchScreen())
             addView(controls, matchScreen())
+            // The shared WebView starts above the controls as a blank white surface. It is
+            // detached after two frames, before the user can enable external control.
+            addView(browserWarmupContainer, matchScreen())
+        }
+    }
+
+    private fun finishBrowserWarmupAfterDraw() {
+        browserWarmupContainer.postOnAnimation {
+            browserWarmupContainer.postOnAnimation {
+                BrowserSessionEngine.detachFrom(browserWarmupContainer)
+                browserWarmupContainer.visibility = View.GONE
+                controls.bringToFront()
+            }
         }
     }
 
