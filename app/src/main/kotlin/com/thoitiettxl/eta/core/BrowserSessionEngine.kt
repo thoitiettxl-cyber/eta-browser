@@ -265,7 +265,7 @@ internal object BrowserSessionEngine {
             attachedContainer?.takeIf { it !== container }?.removeAllViews()
             attachedContainer = container
             contextWrapper?.baseContext = hostContext
-            webView?.let {
+            ensureWebView().let {
                 attachWebViewOnMain(it, container)
                 updateUserInteractionOnMain(it)
             }

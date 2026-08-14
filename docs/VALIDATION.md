@@ -22,10 +22,11 @@ For the package migration and extraction release, verify:
 2. install the CI-built `com.thoitiettxl.eta` APK as a clean app;
 3. confirm old pairing data is absent and a new pairing is required;
 4. pair and enable the bridge;
-5. run CLI health, navigation, readable extraction, interaction, screenshot, reset, and signal cancellation;
-6. run Pi health, navigation, readable extraction, screenshot consumption, and `USER_CONTROL_ACTIVE` behavior;
-7. confirm the listener is loopback-only and disabling the bridge removes it;
-8. confirm package identity with Android package inspection;
-9. capture the tested commit, Actions run, artifact ID, APK SHA-256, and device transcript.
+5. before ever opening BrowserActivity, run CLI health, navigation, readable extraction, interaction, and screenshot; visually confirm that the first screenshot is not blank;
+6. run reset and signal cancellation;
+7. run Pi health, navigation, readable extraction, screenshot consumption, and `USER_CONTROL_ACTIVE` behavior;
+8. confirm the listener is loopback-only and disabling the bridge removes it;
+9. confirm package identity with Android package inspection;
+10. capture the tested commit, Actions run, artifact ID, APK SHA-256, and device transcript.
 
 A release must not be published while required CI or installed-APK acceptance is missing.

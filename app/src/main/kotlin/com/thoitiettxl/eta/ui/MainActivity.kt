@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
@@ -14,6 +15,7 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -27,6 +29,7 @@ class MainActivity : Activity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var pairingStore: BrowserPairingStore
     private lateinit var pairingTokenInput: EditText
+    private lateinit var browserWarmupContainer: FrameLayout
     private lateinit var status: TextView
     private lateinit var credentials: TextView
     private lateinit var clients: TextView
@@ -43,7 +46,10 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         pairingStore = BrowserPairingStore(this)
         BrowserBridgeRuntime.syncPairing(pairingStore.token())
+        BrowserSessionEngine.initialize(applicationContext)
         setContentView(buildContent())
+        BrowserSessionEngine.setUserControlActive(false)
+        BrowserSessionEngine.attachTo(browserWarmupContainer, this)
         requestNotificationPermissionIfNeeded()
     }
 
@@ -58,7 +64,12 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
-    private fun buildContent(): ScrollView {
+    override fun onDestroy() {
+        BrowserSessionEngine.detachFrom(browserWarmupContainer)
+        super.onDestroy()
+    }
+
+    private fun buildContent(): FrameLayout {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -138,7 +149,8 @@ class MainActivity : Activity() {
         }
         content.addView(pageState, matchWidth())
 
-        return ScrollView(this).apply {
+        val controls = ScrollView(this).apply {
+            setBackgroundColor(Color.WHITE)
             addView(
                 content,
                 ViewGroup.LayoutParams(
@@ -146,6 +158,13 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 )
             )
+        }
+        browserWarmupContainer = FrameLayout(this)
+        return FrameLayout(this).apply {
+            // Keep the shared WebView attached behind the opaque controls so its rendering
+            // surface is initialized before the first external screenshot request.
+            addView(browserWarmupContainer, matchScreen())
+            addView(controls, matchScreen())
         }
     }
 
@@ -251,6 +270,12 @@ class MainActivity : Activity() {
         ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
+
+    private fun matchScreen(): ViewGroup.LayoutParams =
+        ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
         )
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
