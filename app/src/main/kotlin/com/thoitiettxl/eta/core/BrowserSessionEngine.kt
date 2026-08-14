@@ -78,6 +78,9 @@ internal object BrowserSessionEngine {
     private var attachedContainer: ViewGroup? = null
 
     @Volatile
+    private var detachedPictureReady: Boolean = false
+
+    @Volatile
     private var currentLoadWaiter: LoadWaiter? = null
 
     @Volatile
@@ -286,6 +289,9 @@ internal object BrowserSessionEngine {
     fun detachFrom(container: ViewGroup) {
         runOnMain {
             if (attachedContainer === container) {
+                if (currentPageVisible && committedMainFrameUrl.isNotBlank()) {
+                    detachedPictureReady = true
+                }
                 userControlActive = false
                 webView?.takeIf { it.parent === container }?.let(container::removeView)
                 attachedContainer = null
@@ -751,6 +757,7 @@ internal object BrowserSessionEngine {
         runCatching { view.clearFormData() }
         runCatching { view.destroy() }
         webView = null
+        detachedPictureReady = false
         contextWrapper = null
     }
 
@@ -764,6 +771,7 @@ internal object BrowserSessionEngine {
         currentLoading = false
         currentPageVisible = false
         committedMainFrameUrl = ""
+        detachedPictureReady = false
         lastClientId = null
         lastRequestId = null
         navigationGeneration.incrementAndGet()
@@ -836,11 +844,14 @@ internal object BrowserSessionEngine {
         return JSONObject().put("value", value)
     }
 
+    @Suppress("DEPRECATION")
     private fun captureViewport(view: WebView): CapturedImage = callOnMain {
         layoutOffscreenOnMain(view)
         val detached = view.windowToken == null
-        // Preserve Eta's source capture path: a detached WebView draws through software.
-        if (detached) view.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        val picture = if (detached && detachedPictureReady) view.capturePicture() else null
+        // Fresh detached WebViews follow Eta's software draw path. After a visible
+        // attachment, Chromium requires its retained picture for detached capture.
+        if (detached && picture == null) view.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         val sourceWidth = view.width.coerceAtLeast(1)
         val sourceHeight = view.height.coerceAtLeast(1)
         val scale = minOf(
@@ -854,7 +865,12 @@ internal object BrowserSessionEngine {
         Canvas(bitmap).also { canvas ->
             canvas.drawColor(Color.WHITE)
             canvas.scale(scale, scale)
-            view.draw(canvas)
+            if (picture != null) {
+                canvas.translate(-view.scrollX.toFloat(), -view.scrollY.toFloat())
+                picture.draw(canvas)
+            } else {
+                view.draw(canvas)
+            }
         }
         val bytes = ByteArrayOutputStream().use { stream ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, SCREENSHOT_QUALITY, stream)
@@ -864,7 +880,11 @@ internal object BrowserSessionEngine {
             bytes = bytes,
             width = bitmap.width,
             height = bitmap.height,
-            mode = if (detached) "software_view_draw" else "view_draw",
+            mode = when {
+                picture != null -> "detached_picture"
+                detached -> "software_view_draw"
+                else -> "view_draw"
+            },
         )
         bitmap.recycle()
         captured

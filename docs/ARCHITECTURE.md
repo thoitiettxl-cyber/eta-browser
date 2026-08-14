@@ -10,7 +10,7 @@ The Eta repository separately owns Eta's internal `browser_use` implementation. 
 
 The `app` module uses application ID and namespace `com.thoitiettxl.eta`. It owns a serialized singleton `BrowserSessionEngine`, user takeover activities, persistent pairing state, and the foreground loopback bridge.
 
-The shared WebView normally remains detached from an Activity, matching Eta's source lifecycle. Detached screenshots switch that WebView to a software layer and call `view.draw` into a bounded bitmap; BrowserActivity temporarily attaches the same instance for observation or user takeover and detaches it again on exit.
+The shared WebView normally remains detached from an Activity, matching Eta's source lifecycle. A fresh detached screenshot switches the WebView to a software layer and calls `view.draw` into a bounded bitmap. BrowserActivity temporarily attaches the same instance for observation or user takeover; after a committed page has been visibly attached, detached capture uses the renderer's retained picture because Chromium no longer produces that page through software `view.draw`.
 
 The WebView profile preserves the source Eta behavior. It is permissive by design and must not be described as a sandbox.
 

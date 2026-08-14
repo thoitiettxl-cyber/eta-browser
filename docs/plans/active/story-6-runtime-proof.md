@@ -71,7 +71,8 @@ Out of scope:
 - [x] Recorded failed clean-install first-screenshot candidates `48ac9bc` and `92d2fac`; both returned valid but visually blank images before BrowserActivity was opened.
 - [x] Installed repository Harness core `0.1.10` in merge mode; `harness doctor` passes.
 - [x] Tested candidate `a0fcfc1`, CI run `31768362887`, artifact `9207186491`, SHA-256 `f5ef51fadd5c84052378f364a4ea6e6533c7373d2bc7eda58b1eefad1418419c`; clean-install navigation and DOM extraction succeeded, but the first and later `view_draw` screenshots were visually blank at 1101 by 2400 pixels and 16,282 bytes.
-- [ ] Build and clean-install test successor code commit `084442e`, which restores Eta's detached software-layer `view.draw` capture path and removes MainActivity rendering warmup.
+- [x] Clean-install tested successor code commit `084442e` from pushed HEAD `9f37303`; CI run `31770124364` and the fresh first screenshot passed, but post-takeover detached capture failed. Artifact `9207809936` is 4,329,423 bytes with SHA-256 `d0c325a4f10373a5d9a20248a52da8878db0bfdcc4a4e9c80256148b974ba49b`.
+- [ ] Revise and retest post-takeover detached capture: the fresh first screenshot passed with `software_view_draw`, but the same mode returned a blank 1272 by 2183 image after BrowserActivity had visibly attached and detached the committed page.
 - [ ] Complete remaining runtime acceptance and final credential revocation.
 - [ ] Record final evidence, complete this plan, commit/push Harness and final changes, and confirm both worktrees are clean.
 
@@ -83,6 +84,7 @@ Out of scope:
 - 2026-08-14: Keep the main activity controls at alpha `0.999` in candidate `a0fcfc1` so Android must composite the shared WebView while it remains visually hidden; this remains provisional until clean-install proof.
 - 2026-08-14: Candidate `a0fcfc1` disproved the `0.999`-alpha composition assumption: the WebView remained attached and its DOM was readable, but repeated `view_draw` captures stayed visually blank while MainActivity was backgrounded.
 - 2026-08-14: Direct comparison with `Mangi-11/Eta` at commit `0485d4a4b58c3edf5eac107815b0a50a828138a3` showed that `AgentBrowserSession` normally keeps the shared WebView detached, switches it to `LAYER_TYPE_SOFTWARE` when `windowToken` is absent, and always captures with `view.draw`. The standalone extraction had replaced that detached path with deprecated `capturePicture`; the successor candidate restores the source lifecycle and capture strategy instead of adding another MainActivity warmup.
+- 2026-08-14: Runtime proof established a two-state capture lifecycle. Fresh detached software `view.draw` is non-blank, while software `view.draw` becomes blank after a committed page is visibly attached and detached. Prior Story 6 proof established that the retained-picture path works after visible attachment, so the next candidate uses it only after that state transition.
 - 2026-08-14: GitHub Release and package publication remain unauthorized.
 
 ## Validation
@@ -111,6 +113,10 @@ CI evidence:
 - Candidate `92d2fac` run `31768052275` passed all jobs but failed first-screenshot runtime acceptance.
 - Candidate `a0fcfc1` run `31768362887` passed all CI jobs but failed installed-device first-screenshot acceptance.
 - Candidate `a0fcfc1` failed installed-device first-screenshot acceptance: `#proof` was visible and readable text matched, while the first and later attached `view_draw` JPEGs were visually all white with identical 16,282-byte payloads.
+- Successor HEAD `9f37303` run `31770124364` passed Android build, Android lint, and CLI/Pi validation; artifact `9207809936` is ready for clean-install runtime acceptance.
+- Successor HEAD `9f37303` passed the clean-install first-screenshot gate: Pi returned a visually non-blank 1272 by 2400 image, and CLI confirmed `capture_mode=software_view_draw` with a 130,164-byte JPEG before BrowserActivity opened.
+- The same installed candidate passed Pi/CLI readable output, CLI selector discovery, typing, clicking, screenshots, exact-request SIGINT cancellation with exit 130 and idle recovery, reset page/cookie/history clearing, loopback-only binding, `USER_CONTROL_ACTIVE`, and automation recovery after takeover.
+- Post-takeover detached screenshot then failed visually: `software_view_draw` returned an all-white 1272 by 2183 JPEG of 17,197 bytes despite a visible committed DOM.
 
 Remaining integration/end-to-end proof:
 
@@ -124,4 +130,4 @@ Remaining integration/end-to-end proof:
 
 ## Result
 
-Candidate `a0fcfc1` failed clean-install first-screenshot runtime acceptance. Successor code commit `084442e` awaits CI and clean-install proof; the remaining recovery/security checks are pending. No release has been created.
+HEAD `9f37303` passed the clean-install first-screenshot gate and the remaining automated recovery/security checks, but failed post-takeover detached screenshot acceptance. A narrow lifecycle fallback candidate is pending. No release has been created.
