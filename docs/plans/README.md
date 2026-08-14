@@ -30,7 +30,7 @@ decision into `docs/decisions/`; keep task-local choices in the plan.
 
 ## Active Plans
 
-- None.
+- [`active/v1.0.0-branding-signing-release.md`](active/v1.0.0-branding-signing-release.md): launcher branding, durable Android signing, signed release candidate, device acceptance, and gated v1.0.0 publication.
 
 ## Completed Plans
 

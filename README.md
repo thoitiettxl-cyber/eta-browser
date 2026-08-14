@@ -1,5 +1,9 @@
 # Eta Browser
 
+<p align="center">
+  <img src="docs/assets/eta-browser-logo.png" alt="Eta Browser logo" width="180" />
+</p>
+
 Eta Browser is a separately installable Android WebView browser designed for local AI-agent control. It provides:
 
 - one shared browser session that the user can take over in the Android app;

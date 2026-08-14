@@ -1,0 +1,159 @@
+name: Build signed release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: Exact 40-character main-branch commit to build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eta-browser-signed-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and verify signed v1.0.0 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELEASE_VERSION: "1.0.0"
+      RELEASE_VERSION_CODE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate release request
+        shell: bash
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          ETA_RELEASE_KEY_ALIAS: ${{ vars.ETA_RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Signed release candidates must be built from main, not $GITHUB_REF." >&2
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "expected_commit must be an exact lowercase 40-character Git commit." >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_SHA" != "$EXPECTED_COMMIT" ]]; then
+            echo "Checked-out commit $GITHUB_SHA does not match expected_commit." >&2
+            exit 1
+          fi
+          if [[ -z "$ETA_RELEASE_KEY_ALIAS" ]]; then
+            echo "Repository variable ETA_RELEASE_KEY_ALIAS is required." >&2
+            exit 1
+          fi
+          scripts/check-package-identity.sh
+          grep -Fq 'versionCode = 1' app/build.gradle.kts
+          grep -Fq 'versionName = "1.0.0"' app/build.gradle.kts
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6
+        with:
+          cache-provider: basic
+
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        with:
+          packages: ""
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install Android SDK 37
+        run: sdkmanager --channel=3 "platforms;android-37.0"
+
+      - name: Materialize release keystore
+        shell: bash
+        env:
+          ETA_RELEASE_KEYSTORE_B64: ${{ secrets.ETA_RELEASE_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ETA_RELEASE_KEYSTORE_B64" ]]; then
+            echo "Repository secret ETA_RELEASE_KEYSTORE_B64 is required." >&2
+            exit 1
+          fi
+          keystore_path="$RUNNER_TEMP/eta-browser-release.jks"
+          printf '%s' "$ETA_RELEASE_KEYSTORE_B64" | base64 --decode > "$keystore_path"
+          chmod 600 "$keystore_path"
+          if [[ ! -s "$keystore_path" ]]; then
+            echo "Decoded release keystore is empty." >&2
+            exit 1
+          fi
+          echo "ETA_RELEASE_KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
+
+      - name: Build signed release APK
+        shell: bash
+        env:
+          ETA_RELEASE_STORE_PASSWORD: ${{ secrets.ETA_RELEASE_STORE_PASSWORD }}
+          ETA_RELEASE_KEY_PASSWORD: ${{ secrets.ETA_RELEASE_KEY_PASSWORD }}
+          ETA_RELEASE_KEY_ALIAS: ${{ vars.ETA_RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ETA_RELEASE_STORE_PASSWORD" || -z "$ETA_RELEASE_KEY_PASSWORD" ]]; then
+            echo "Release signing password secrets are required." >&2
+            exit 1
+          fi
+          ./gradlew --no-daemon --no-configuration-cache :app:assembleRelease
+
+      - name: Verify and record release evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_apk="app/build/outputs/apk/release/app-release.apk"
+          output_dir="release-candidate"
+          output_apk="$output_dir/eta-browser-v${RELEASE_VERSION}.apk"
+          if [[ ! -f "$source_apk" ]]; then
+            echo "Signed release APK was not produced at $source_apk." >&2
+            exit 1
+          fi
+          apksigner_path="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          if [[ -z "$apksigner_path" ]]; then
+            echo "Android apksigner was not found." >&2
+            exit 1
+          fi
+          mkdir -p "$output_dir"
+          cp "$source_apk" "$output_apk"
+          "$apksigner_path" verify --verbose --print-certs "$output_apk" \
+            > "$output_dir/apksigner-verification.txt"
+          sha256sum "$output_apk" > "$output_apk.sha256"
+          apk_sha256="$(cut -d ' ' -f 1 "$output_apk.sha256")"
+          {
+            echo "release_version=$RELEASE_VERSION"
+            echo "version_code=$RELEASE_VERSION_CODE"
+            echo "source_commit=$GITHUB_SHA"
+            echo "actions_run=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "source_ref=$GITHUB_REF"
+            echo "apk_file=$(basename "$output_apk")"
+            echo "apk_sha256=$apk_sha256"
+          } > "$output_dir/release-metadata.txt"
+          cat "$output_dir/release-metadata.txt" >> "$GITHUB_STEP_SUMMARY"
+          cat "$output_dir/apksigner-verification.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload signed release candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: eta-browser-v1.0.0-signed-${{ github.sha }}
+          path: release-candidate/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Remove temporary keystore
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${ETA_RELEASE_KEYSTORE_PATH:-}" ]]; then
+            rm -f -- "$ETA_RELEASE_KEYSTORE_PATH"
+          fi

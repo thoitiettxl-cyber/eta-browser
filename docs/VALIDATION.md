@@ -16,6 +16,24 @@ Required CI results:
 
 Android unit-test sources are retained, but Android unit-test tasks are not a release gate. Runtime behavior is validated with the CI-built APK on the Android device.
 
+## Signed release candidate evidence
+
+After all required CI checks pass for the merged `main` commit, dispatch
+`Build signed release APK` with that exact 40-character commit. Require:
+
+1. the workflow source ref is `refs/heads/main` and its source commit equals the
+   accepted CI commit;
+2. `:app:assembleRelease` passes with all release signing inputs present;
+3. `apksigner verify --verbose --print-certs` passes and records signer details;
+4. the artifact includes `eta-browser-v1.0.0.apk`, its SHA-256 file,
+   `apksigner-verification.txt`, and `release-metadata.txt`;
+5. the downloaded APK SHA-256 equals the workflow evidence before installation;
+6. only that exact APK proceeds to installed-device acceptance and any later
+   GitHub Release.
+
+Workflow success proves build and signing, not installed runtime behavior or
+publication readiness.
+
 ## Installed-APK acceptance
 
 For the package migration and extraction release, verify:
