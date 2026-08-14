@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "ok": false,
+  "command": "click",
+  "error": {
+    "category": "usage",
+    "code": "TARGET_REQUIRED",
+    "message": "click requires --selector or both coordinates"
+  }
+}

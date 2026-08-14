@@ -1,0 +1,16 @@
+{
+  "name": "eta-browser-pi-extension",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check core.mjs",
+    "test": "node --test core.test.mjs"
+  },
+  "dependencies": {
+    "eta-browser-cli": "file:../../tools/eta-browser-cli"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

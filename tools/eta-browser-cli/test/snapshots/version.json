@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "ok": true,
+  "command": "version",
+  "result": {
+    "cli_version": "1.0.0",
+    "output_version": 1
+  }
+}

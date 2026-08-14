@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eta-browser-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Build debug APK
+            task: ":app:assembleDebug"
+          - name: Lint Android app
+            task: ":app:lintDebug"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6
+        with:
+          cache-provider: basic
+
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+        with:
+          packages: ""
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install Android SDK 37
+        run: sdkmanager --channel=3 "platforms;android-37.0"
+
+      - name: Check Android identity
+        run: scripts/check-package-identity.sh
+
+      - name: Run ${{ matrix.task }}
+        run: >-
+          ./gradlew --no-daemon --no-configuration-cache
+          ${{ matrix.task }}
+
+      - name: Upload debug APK
+        if: matrix.task == ':app:assembleDebug'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: eta-browser-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+  node:
+    name: Validate CLI and Pi adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+
+      - name: Check Android identity
+        run: scripts/check-package-identity.sh
+
+      - name: Validate production CLI
+        run: |
+          npm --prefix tools/eta-browser-cli run check
+          npm --prefix tools/eta-browser-cli test
+
+      - name: Install Pi adapter dependency
+        run: npm --prefix pi/eta-browser-extension install --ignore-scripts --no-package-lock
+
+      - name: Validate Pi adapter
+        run: |
+          npm --prefix pi/eta-browser-extension run check
+          npm --prefix pi/eta-browser-extension test

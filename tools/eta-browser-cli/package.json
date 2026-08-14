@@ -1,0 +1,27 @@
+{
+  "name": "eta-browser-cli",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./lib/client.mjs",
+    "./config": "./lib/config.mjs"
+  },
+  "files": [
+    "eta-browser.mjs",
+    "lib/",
+    "scripts/",
+    "README.md"
+  ],
+  "bin": {
+    "eta-browser": "./eta-browser.mjs"
+  },
+  "scripts": {
+    "check": "node --check eta-browser.mjs && node --check lib/client.mjs && node --check lib/config.mjs",
+    "test": "node --test test/*.test.mjs",
+    "smoke:device": "scripts/real-device-smoke.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

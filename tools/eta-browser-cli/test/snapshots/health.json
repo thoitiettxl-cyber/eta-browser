@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "ok": true,
+  "command": "health",
+  "result": {
+    "service": "eta-browser-bridge",
+    "protocol": 2,
+    "endpoint": "127.0.0.1:18765",
+    "session_leased": false,
+    "active_request_id": null,
+    "browser_available": true,
+    "host": "example.com",
+    "title": "Example Domain",
+    "is_loading": false,
+    "is_user_controlling": false
+  }
+}

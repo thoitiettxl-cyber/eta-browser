@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "ok": false,
+  "command": "wait-for-selector",
+  "error": {
+    "category": "browser",
+    "code": "ELEMENT_NOT_FOUND",
+    "message": "selector did not appear"
+  },
+  "result": {
+    "browser": {
+      "ok": false,
+      "tool": "browser_use",
+      "action": "wait_for_selector",
+      "status": "not_found",
+      "code": "ELEMENT_NOT_FOUND",
+      "message": "selector did not appear"
+    },
+    "images": []
+  }
+}
