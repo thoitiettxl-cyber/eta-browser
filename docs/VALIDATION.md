@@ -2,12 +2,14 @@
 
 ## Required repository checks
 
-GitHub Actions is the authority for Android build and lint because the Alpine development chroot is not an accepted Android build environment.
+GitHub Actions is the authority for Android build, lint, and Gradle unit tests because the Alpine development chroot is not an accepted Android build environment.
 
 Required CI results:
 
+- the accepted Android/CLI/Pi browser action catalog check and its negative fixtures pass;
 - `:app:assembleDebug` passes and uploads `eta-browser-debug.apk`;
 - `:app:lintDebug` passes;
+- `:app:testDebugUnitTest` passes;
 - CLI syntax and all host tests pass;
 - Pi adapter syntax and fake-bridge tests pass;
 - no source or manifest reference to the retired package `fuck.andes.browser` remains.
@@ -30,3 +32,30 @@ For the package migration and extraction release, verify:
 10. capture the tested commit, Actions run, artifact ID, APK SHA-256, and device transcript.
 
 A release must not be published while required CI or installed-APK acceptance is missing.
+
+## Bounded agent-extension acceptance
+
+Use the repository-owned fixture rather than an external account or sensitive page. From the repository root, start one foreground loopback server and stop it with Ctrl-C when acceptance is finished:
+
+```sh
+python3 -m http.server 18880 \
+  --bind 127.0.0.1 \
+  --directory tools/eta-browser-cli/test/fixtures
+```
+
+Navigate Eta Browser to `http://127.0.0.1:18880/bounded-actions.html`. The fixture contains deterministic controls for ref invalidation, select/press/hover, all handoff outcomes, console capture, and a deliberately missing image whose secret-looking query must be redacted from network diagnostics.
+
+Before claiming the semantic observation, human handoff, interaction, or diagnostic extensions complete, install the CI-built APK for the exact tested commit and use a non-sensitive local fixture to verify:
+
+1. `observe` returns visible semantic controls without any input, select, or contenteditable values; ref-based click/type succeeds from the latest observation;
+2. a second `observe`, navigation, DOM replacement, and reset make prior refs fail with `STALE_ELEMENT_REF` rather than targeting a different element;
+3. `select` changes the requested option, `press` exercises Enter/Tab/Ctrl+A behavior, and `hover` reveals a fixture surface or reports the documented synthetic-WebView limitation;
+4. `request_help` shows only a generic notification, displays the prompt inside BrowserActivity, keeps the page interactive, blocks interleaving automation, and returns `continued`, `cancelled`, `timed_out`, and criteria-driven `completed` in separate runs;
+5. exact-request SIGINT cancellation interrupts `request_help`, releases the lease, removes handoff UI/notification state, and leaves normal automation usable;
+6. user-entered handoff values do not appear in action results, health, app logs, console output, network output, or repository transcripts;
+7. `console` and `network` obey cursor/limit bounds; network URLs omit user-info/query/fragment and no headers, bodies, cookies, or authorization data are returned;
+8. reset clears refs and both diagnostic buffers;
+9. ordinary manual takeover, cancellation, reset, bridge disable/revoke, and both screenshot lifecycle modes still pass their existing regression gates;
+10. both CLI and Pi exercise every additive action against the installed APK.
+
+Synthetic hover/key fidelity and WebView callback-based network coverage must be reported exactly as observed; do not infer CDP-equivalent behavior from host tests.

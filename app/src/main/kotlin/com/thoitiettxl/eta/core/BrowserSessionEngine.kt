@@ -13,6 +13,7 @@ import android.util.Base64
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.ConsoleMessage
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -22,6 +23,7 @@ import android.webkit.WebSettings
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.thoitiettxl.eta.bridge.BrowserBridgeService
 import java.io.ByteArrayOutputStream
 import java.util.Locale
 import java.util.concurrent.CompletableFuture
@@ -61,6 +63,7 @@ internal object BrowserSessionEngine {
     private val interrupted = AtomicBoolean(false)
     private val operationEpoch = AtomicLong(0L)
     private val navigationGeneration = AtomicLong(0L)
+    private val documentEpoch = AtomicLong(1L)
 
     private val mutableSnapshots = MutableStateFlow(BrowserSessionSnapshot())
     val snapshots: StateFlow<BrowserSessionSnapshot> = mutableSnapshots.asStateFlow()
@@ -112,6 +115,12 @@ internal object BrowserSessionEngine {
 
     @Volatile
     private var userControlActive: Boolean = false
+
+    @Volatile
+    private var humanHandoffActive: Boolean = false
+
+    @Volatile
+    private var browserActivityVisible: Boolean = false
 
     @Volatile
     private var activeActionIsUserInitiated: Boolean = false
@@ -235,6 +244,7 @@ internal object BrowserSessionEngine {
             CookieManager.getInstance().removeAllCookies(null)
             CookieManager.getInstance().flush()
             WebStorage.getInstance().deleteAllData()
+            BrowserDiagnostics.clear()
             clearSessionStateOnMain()
         }
         initialize(context)
@@ -242,7 +252,7 @@ internal object BrowserSessionEngine {
     }
 
     fun interruptExternalOperation(operation: BrowserOperationTicket): Boolean {
-        if (userControlActive || activeExternalOperation !== operation) return false
+        if (activeExternalOperation !== operation) return false
         interruptCurrentAction(force = false)
         return true
     }
@@ -277,6 +287,7 @@ internal object BrowserSessionEngine {
     }
 
     fun setUserControlActive(active: Boolean) {
+        if (humanHandoffActive) return
         if (userControlActive == active) return
         userControlActive = active
         if (active) interruptCurrentAction(force = true)
@@ -286,13 +297,22 @@ internal object BrowserSessionEngine {
         }
     }
 
+    fun activeHumanHandoff(): BrowserHumanHandoffRequest? = BrowserHumanHandoff.requests.value
+
+    fun setBrowserActivityVisible(visible: Boolean) {
+        browserActivityVisible = visible
+    }
+
+    fun resolveHumanHandoff(outcome: BrowserHumanHandoffOutcome): Boolean =
+        BrowserHumanHandoff.resolve(outcome)
+
     fun detachFrom(container: ViewGroup) {
         runOnMain {
             if (attachedContainer === container) {
                 if (currentPageVisible && committedMainFrameUrl.isNotBlank()) {
                     detachedPictureReady = true
                 }
-                userControlActive = false
+                if (!humanHandoffActive) userControlActive = false
                 webView?.takeIf { it.parent === container }?.let(container::removeView)
                 attachedContainer = null
                 appContext?.let { contextWrapper?.baseContext = it }
@@ -364,8 +384,12 @@ internal object BrowserSessionEngine {
                         BrowserAction.GET_READABLE -> readPage(args, readable = true)
                         BrowserAction.GET_TEXT -> readPage(args, readable = false)
                         BrowserAction.FIND_ELEMENTS -> findElements(args)
+                        BrowserAction.OBSERVE -> observe()
                         BrowserAction.CLICK -> click(args)
                         BrowserAction.TYPE -> type(args)
+                        BrowserAction.HOVER -> hover(args)
+                        BrowserAction.SELECT -> select(args)
+                        BrowserAction.PRESS -> press(args)
                         BrowserAction.SCROLL -> scroll(args)
                         BrowserAction.SCREENSHOT -> screenshot(args)
                         BrowserAction.GET_PAGE_INFO -> pageInfo()
@@ -373,6 +397,9 @@ internal object BrowserSessionEngine {
                         BrowserAction.GO_FORWARD -> historyNavigation(action, backwards = false)
                         BrowserAction.RELOAD -> reload()
                         BrowserAction.WAIT_FOR_SELECTOR -> waitForSelector(args)
+                        BrowserAction.REQUEST_HELP -> requestHelp(args)
+                        BrowserAction.CONSOLE -> console(args)
+                        BrowserAction.NETWORK -> network(args)
                         null -> throw BrowserSessionFailure("INVALID_ACTION", "浏览器 action 无效")
                     }
                 }.getOrElse { throwable -> failureResult(action, throwable) }
@@ -465,10 +492,25 @@ internal object BrowserSessionEngine {
         )
     }
 
-    private fun click(args: JSONObject): BrowserToolResult {
+    private fun observe(): BrowserToolResult {
         val view = requirePage()
+        val value = evaluateObject(view, BrowserDomScripts.observe(documentEpoch.get()))
+        return toolResult(mergeValue(baseEnvelope("observe", true, "ok"), value))
+    }
+
+    private fun click(args: JSONObject): BrowserToolResult {
         val target = targetFrom(args)
-        val value = evaluateObject(view, BrowserDomScripts.click(target.selector, target.x, target.y))
+        val view = requirePage(refTargeted = target.ref != null)
+        val value = evaluateObject(
+            view,
+            BrowserDomScripts.click(
+                selector = target.selector,
+                ref = target.ref,
+                x = target.x,
+                y = target.y,
+                documentEpoch = documentEpoch.get(),
+            ),
+        )
         waitForPostAction()
         return toolResult(
             mergeValue(baseEnvelope("click", true, "ok"), value)
@@ -482,22 +524,88 @@ internal object BrowserSessionEngine {
         }
         val inputText = args.optString("text")
         val submit = args.optBoolean("submit", false)
-        val view = requirePage()
         val target = targetFrom(args)
+        val view = requirePage(refTargeted = target.ref != null)
         val value = evaluateObject(
             view,
             BrowserDomScripts.type(
                 selector = target.selector,
+                ref = target.ref,
                 x = target.x,
                 y = target.y,
                 text = inputText,
                 submit = submit,
+                documentEpoch = documentEpoch.get(),
             )
         )
         waitForPostAction()
         return toolResult(
             mergeValue(baseEnvelope("type", true, "ok"), value)
                 .put("side_effect", if (submit) "possible" else "local_input")
+        )
+    }
+
+    private fun hover(args: JSONObject): BrowserToolResult {
+        val target = targetFrom(args)
+        val view = requirePage(refTargeted = target.ref != null)
+        val value = evaluateObject(
+            view,
+            BrowserDomScripts.hover(
+                selector = target.selector,
+                ref = target.ref,
+                x = target.x,
+                y = target.y,
+                documentEpoch = documentEpoch.get(),
+            ),
+        )
+        Thread.sleep(200L)
+        return toolResult(
+            mergeValue(baseEnvelope("hover", true, "ok"), value)
+                .put("side_effect", "possible"),
+        )
+    }
+
+    private fun select(args: JSONObject): BrowserToolResult {
+        val target = targetFrom(args)
+        val view = requirePage(refTargeted = target.ref != null)
+        val value = evaluateObject(
+            view,
+            BrowserDomScripts.select(
+                selector = target.selector,
+                ref = target.ref,
+                x = target.x,
+                y = target.y,
+                values = BrowserActionContract.selectionValues(args),
+                documentEpoch = documentEpoch.get(),
+            ),
+        )
+        waitForPostAction()
+        return toolResult(
+            mergeValue(baseEnvelope("select", true, "ok"), value)
+                .put("side_effect", "possible"),
+        )
+    }
+
+    private fun press(args: JSONObject): BrowserToolResult {
+        val target = optionalTargetFrom(args)
+        val view = requirePage(refTargeted = target?.ref != null)
+        val key = BrowserActionContract.pressKey(args)
+            ?: throw BrowserSessionFailure("INVALID_ARGUMENT", "press key 无效")
+        val value = evaluateObject(
+            view,
+            BrowserDomScripts.press(
+                selector = target?.selector,
+                ref = target?.ref,
+                x = target?.x,
+                y = target?.y,
+                key = key,
+                documentEpoch = documentEpoch.get(),
+            ),
+        )
+        waitForPostAction()
+        return toolResult(
+            mergeValue(baseEnvelope("press", true, "ok"), value)
+                .put("side_effect", "possible"),
         )
     }
 
@@ -606,20 +714,158 @@ internal object BrowserSessionEngine {
         )
     }
 
-    private fun targetFrom(args: JSONObject): BrowserTarget {
+    private fun requestHelp(args: JSONObject): BrowserToolResult {
+        val view = requirePage()
+        val context = appContext
+            ?: throw BrowserSessionFailure("BROWSER_NOT_INITIALIZED", "浏览器尚未初始化")
+        val prompt = args.optString("prompt").trim().take(600)
+        val title = args.optString("title").trim().ifBlank { "Human input required" }.take(120)
+        val targetSelector = args.optString("target_selector").trim().takeIf(String::isNotBlank)
+            ?.take(240)
+        val criteria = args.optJSONObject("completion_criteria")
+        val urlContains = criteria?.optString("url_contains")?.trim()?.takeIf(String::isNotBlank)
+            ?.take(320)
+        val selectorExists = criteria?.optString("selector_exists")?.trim()?.takeIf(String::isNotBlank)
+            ?.take(240)
+        val match = criteria?.optString("match", "any")?.lowercase(Locale.ROOT)
+            ?.takeIf { it == "all" } ?: "any"
+        val stableForMs = criteria?.optLong("stable_for_ms", 0L)?.coerceIn(0L, 5_000L) ?: 0L
+        val timeoutMs = BrowserActionContract.requestHelpTimeoutMs(args)
+        if (!browserActivityVisible && !BrowserBridgeService.canNotifyHumanHelp(context)) {
+            throw BrowserSessionFailure(
+                "HUMAN_HANDOFF_UNAVAILABLE",
+                "请打开 Eta Browser 或允许人工接管通知后重试",
+                status = "blocked",
+            )
+        }
+        val ticket = BrowserHumanHandoff.begin(
+            title = title,
+            prompt = prompt,
+            targetSelector = targetSelector,
+            timeoutMs = timeoutMs,
+        )
+
+        var outcome = "timed_out"
+        var targetResolved = false
+        var matchedSinceMs: Long? = null
+        try {
+            if (targetSelector != null) {
+                val highlighted = evaluateObject(view, BrowserDomScripts.highlightHelpTarget(targetSelector))
+                targetResolved = highlighted.optBoolean("resolved_target", false)
+            }
+            if (selectorExists != null) {
+                // Validate selector syntax before yielding control to avoid a five-minute invalid wait.
+                evaluateObject(view, BrowserDomScripts.completionState(urlContains, selectorExists, match))
+            }
+
+            humanHandoffActive = true
+            callOnMain {
+                userControlActive = true
+                updateUserInteractionOnMain(view)
+                publishSnapshotOnMain()
+            }
+            if (browserActivityVisible) {
+                runCatching { BrowserBridgeService.notifyHumanHelp(context) }
+            } else {
+                runCatching { BrowserBridgeService.notifyHumanHelp(context) }
+                    .getOrElse {
+                        throw BrowserSessionFailure(
+                            "HUMAN_HANDOFF_UNAVAILABLE",
+                            "无法显示人工接管通知，请打开 Eta Browser 后重试",
+                            status = "blocked",
+                        )
+                    }
+            }
+
+            while (System.currentTimeMillis() < ticket.request.deadlineMs) {
+                throwIfInterrupted()
+                val resolved = ticket.outcome()
+                if (resolved != null) {
+                    outcome = resolved.wireName
+                    break
+                }
+
+                if (urlContains != null || selectorExists != null) {
+                    val completion = evaluateObject(
+                        view,
+                        BrowserDomScripts.completionState(urlContains, selectorExists, match),
+                    )
+                    if (completion.optBoolean("matched", false)) {
+                        val now = System.currentTimeMillis()
+                        val started = matchedSinceMs ?: now.also { matchedSinceMs = it }
+                        if (now - started >= stableForMs) {
+                            outcome = "completed"
+                            break
+                        }
+                    } else {
+                        matchedSinceMs = null
+                    }
+                }
+                Thread.sleep(250L)
+            }
+        } finally {
+            evaluateCleanup(view, BrowserDomScripts.clearHelpTarget())
+            BrowserHumanHandoff.finish(ticket)
+            humanHandoffActive = false
+            runCatching {
+                callOnMain {
+                    userControlActive = false
+                    updateUserInteractionOnMain(view)
+                    publishSnapshotOnMain()
+                }
+            }
+            runCatching { BrowserBridgeService.dismissHumanHelp(context) }
+        }
+
+        return toolResult(
+            baseEnvelope("request_help", true, outcome)
+                .put("outcome", outcome)
+                .put("target_resolved", targetResolved)
+                .put("completion_criteria_configured", urlContains != null || selectorExists != null),
+        )
+    }
+
+    private fun console(args: JSONObject): BrowserToolResult = toolResult(
+        mergeValue(
+            baseEnvelope("console", true, "ok"),
+            BrowserDiagnostics.consoleSnapshot(
+                since = BrowserActionContract.diagnosticSince(args),
+                limit = BrowserActionContract.diagnosticLimit(args),
+            ),
+        ),
+    )
+
+    private fun network(args: JSONObject): BrowserToolResult = toolResult(
+        mergeValue(
+            baseEnvelope("network", true, "ok"),
+            BrowserDiagnostics.networkSnapshot(
+                since = BrowserActionContract.diagnosticSince(args),
+                limit = BrowserActionContract.diagnosticLimit(args),
+            ),
+        ),
+    )
+
+    private fun targetFrom(args: JSONObject): BrowserTarget =
+        optionalTargetFrom(args)
+            ?: throw BrowserSessionFailure(
+                "INVALID_ARGUMENT",
+                "需要 selector、ref 或 coordinate_x/coordinate_y",
+            )
+
+    private fun optionalTargetFrom(args: JSONObject): BrowserTarget? {
         val selector = validatedSelector(args, required = false)
+        val ref = args.optString("ref").trim().takeIf(String::isNotBlank)
         val hasX = args.has("coordinate_x") && !args.isNull("coordinate_x")
         val hasY = args.has("coordinate_y") && !args.isNull("coordinate_y")
         if (hasX != hasY) {
             throw BrowserSessionFailure("INVALID_ARGUMENT", "coordinate_x 与 coordinate_y 必须同时提供")
         }
-        if (selector == null && !hasX) {
-            throw BrowserSessionFailure("INVALID_ARGUMENT", "需要 selector 或 coordinate_x/coordinate_y")
-        }
+        if (selector == null && ref == null && !hasX) return null
         val x = if (hasX) args.optInt("coordinate_x") else null
         val y = if (hasY) args.optInt("coordinate_y") else null
         return BrowserTarget(
             selector = selector,
+            ref = ref,
             x = x,
             y = y,
         )
@@ -634,9 +880,15 @@ internal object BrowserSessionEngine {
         return selector
     }
 
-    private fun requirePage(): WebView {
+    private fun requirePage(refTargeted: Boolean = false): WebView {
         val view = ensureWebView()
         if (!snapshots.value.available || currentUrl.isBlank()) {
+            if (refTargeted) {
+                throw BrowserSessionFailure(
+                    "STALE_ELEMENT_REF",
+                    "元素引用已失效，请重新调用 observe",
+                )
+            }
             throw BrowserSessionFailure("NO_PAGE", "当前没有网页，请先调用 navigate")
         }
         throwIfInterrupted()
@@ -775,7 +1027,16 @@ internal object BrowserSessionEngine {
         lastClientId = null
         lastRequestId = null
         navigationGeneration.incrementAndGet()
+        documentEpoch.incrementAndGet()
         publishSnapshotOnMain()
+    }
+
+    private fun evaluateCleanup(view: WebView, body: String) {
+        runCatching {
+            callOnMain {
+                if (webView === view) view.evaluateJavascript(BrowserDomScripts.wrap(body), null)
+            }
+        }
     }
 
     private fun evaluateObject(view: WebView, body: String): JSONObject {
@@ -826,12 +1087,21 @@ internal object BrowserSessionEngine {
             .getOrElse { throw BrowserSessionFailure("SCRIPT_FAILED", "网页结果格式无效") }
         if (!envelope.optBoolean("ok", false)) {
             val code = envelope.optString("error")
+            if (code.contains("STALE_ELEMENT_REF")) {
+                throw BrowserSessionFailure(
+                    "STALE_ELEMENT_REF",
+                    "元素引用已失效，请重新调用 observe",
+                )
+            }
             val message = when {
                 code.contains("TARGET_NOT_FOUND") ||
                     code.contains("TARGET_NOT_VISIBLE") ||
                     code.contains("TARGET_OCCLUDED") -> "目标网页元素不可见或被其他内容遮挡"
                 code.contains("TARGET_DISABLED") -> "目标网页元素当前不可操作"
                 code.contains("TARGET_NOT_EDITABLE") -> "目标网页元素不可输入"
+                code.contains("TARGET_NOT_SELECT") -> "目标网页元素不是 select 控件"
+                code.contains("TARGET_NOT_MULTI_SELECT") -> "目标 select 控件不支持多选"
+                code.contains("SELECT_VALUE_NOT_FOUND") -> "目标 select 控件缺少请求的选项"
                 code.contains("not a valid selector", ignoreCase = true) -> "CSS selector 无效"
                 else -> "网页元素操作失败"
             }
@@ -969,6 +1239,7 @@ internal object BrowserSessionEngine {
             canGoForward = runCatching { view?.canGoForward() == true }.getOrDefault(false),
             error = currentError,
             isUserControlling = userControlActive,
+            isHumanHandoffPending = humanHandoffActive,
             lastClientId = lastClientId,
             lastRequestId = lastRequestId,
         )
@@ -1015,7 +1286,20 @@ internal object BrowserSessionEngine {
     }
 
     private class BrowserClient : WebViewClient() {
+        override fun shouldInterceptRequest(
+            view: WebView,
+            request: WebResourceRequest,
+        ): WebResourceResponse? {
+            BrowserDiagnostics.recordNetworkRequest(
+                method = request.method.orEmpty(),
+                url = request.url?.toString(),
+                mainFrame = request.isForMainFrame,
+            )
+            return null
+        }
+
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+            documentEpoch.incrementAndGet()
             currentUrl = url.orEmpty()
             currentHost = hostOf(currentUrl)
             currentTitle = view.title.orEmpty()
@@ -1046,6 +1330,7 @@ internal object BrowserSessionEngine {
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+            if (currentUrl != url.orEmpty()) documentEpoch.incrementAndGet()
             currentUrl = url.orEmpty()
             currentHost = hostOf(currentUrl)
             currentTitle = view.title.orEmpty()
@@ -1053,6 +1338,13 @@ internal object BrowserSessionEngine {
         }
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+            BrowserDiagnostics.recordNetworkFailure(
+                method = request.method.orEmpty(),
+                url = request.url?.toString(),
+                mainFrame = request.isForMainFrame,
+                errorCode = error.errorCode,
+                description = error.description?.toString().orEmpty(),
+            )
             if (!request.isForMainFrame) return
             setNavigationErrorOnMain("NETWORK_ERROR", "页面加载失败，请检查网络连接")
         }
@@ -1062,6 +1354,12 @@ internal object BrowserSessionEngine {
             request: WebResourceRequest,
             errorResponse: WebResourceResponse,
         ) {
+            BrowserDiagnostics.recordNetworkHttpError(
+                method = request.method.orEmpty(),
+                url = request.url?.toString(),
+                mainFrame = request.isForMainFrame,
+                status = errorResponse.statusCode,
+            )
             if (!request.isForMainFrame) return
             currentHttpStatus = errorResponse.statusCode
             if (errorResponse.statusCode >= 400) {
@@ -1087,6 +1385,16 @@ internal object BrowserSessionEngine {
     }
 
     private class BrowserChrome : WebChromeClient() {
+        override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
+            BrowserDiagnostics.recordConsole(
+                level = consoleMessage.messageLevel().name,
+                message = consoleMessage.message().orEmpty(),
+                source = consoleMessage.sourceId(),
+                line = consoleMessage.lineNumber(),
+            )
+            return true
+        }
+
         override fun onReceivedTitle(view: WebView, title: String?) {
             currentTitle = title.orEmpty()
             publishSnapshotOnMain()
@@ -1101,6 +1409,7 @@ internal object BrowserSessionEngine {
 
     private data class BrowserTarget(
         val selector: String?,
+        val ref: String?,
         val x: Int?,
         val y: Int?,
     )

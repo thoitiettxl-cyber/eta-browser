@@ -44,6 +44,7 @@ function baseHealth(overrides = {}) {
     title: "Example Domain",
     is_loading: false,
     is_user_controlling: false,
+    human_handoff_pending: false,
     ...overrides,
   };
 }
@@ -63,6 +64,9 @@ test("help is diagnostic-only and lists production commands", async () => {
     "get-readable",
     "get-text",
     "find-elements",
+    "observe",
+    "request-help",
+    "console | network",
     "wait-for-selector",
     "screenshot --output PATH",
   ]) {
@@ -289,4 +293,20 @@ test("CLI runs from a working directory outside the repository", async () => {
       }
     },
   );
+});
+
+test("new interaction and handoff usage errors fail before transport", async () => {
+  const cases = [
+    [["click", "--selector", "button", "--ref", "@e1"], "AMBIGUOUS_TARGET"],
+    [["hover", "--ref", "stale"], "INVALID_REF"],
+    [["select", "--selector", "select"], "VALUE_REQUIRED"],
+    [["press", "F13"], "INVALID_KEY"],
+    [["request-help", "Continue", "--completion-match", "neither"], "INVALID_COMPLETION_MATCH"],
+    [["request-help", "x".repeat(601)], "PROMPT_TOO_LONG"],
+  ];
+  for (const [args, code] of cases) {
+    const result = await runCli(18_765, args);
+    assert.equal(result.status, 2, result.stderr);
+    assert.equal(payload(result).error.code, code);
+  }
 });

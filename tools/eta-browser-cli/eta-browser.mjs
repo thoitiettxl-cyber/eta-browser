@@ -23,6 +23,11 @@ import {
 const CLI_VERSION = "1.0.0";
 const OUTPUT_VERSION = 1;
 const CLIENT_ID = "eta-browser-cli";
+const PRESS_KEYS = new Set([
+  "Enter", "Escape", "Tab", "Shift+Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "Home", "End", "PageUp", "PageDown", "Space", "Backspace", "Delete", "Ctrl+A",
+]);
+const REF_PATTERN = /^@e[1-9][0-9]{0,8}$/;
 
 const EXIT = Object.freeze({
   SUCCESS: 0,
@@ -41,8 +46,12 @@ const ACTION_COMMANDS = new Set([
   "get-readable",
   "get-text",
   "find-elements",
+  "observe",
   "click",
   "type",
+  "hover",
+  "select",
+  "press",
   "scroll",
   "screenshot",
   "get-page-info",
@@ -50,6 +59,9 @@ const ACTION_COMMANDS = new Set([
   "go-forward",
   "reload",
   "wait-for-selector",
+  "request-help",
+  "console",
+  "network",
   "action",
 ]);
 const COMMAND_FLAGS = Object.freeze({
@@ -65,8 +77,12 @@ const COMMAND_FLAGS = Object.freeze({
   "get-readable": new Set(["offset", "max-chars"]),
   "get-text": new Set(["selector", "offset", "max-chars"]),
   "find-elements": new Set(["selector"]),
-  click: new Set(["selector", "coordinate-x", "coordinate-y"]),
-  type: new Set(["text", "selector", "coordinate-x", "coordinate-y", "submit"]),
+  observe: new Set(),
+  click: new Set(["selector", "ref", "coordinate-x", "coordinate-y"]),
+  type: new Set(["text", "selector", "ref", "coordinate-x", "coordinate-y", "submit"]),
+  hover: new Set(["selector", "ref", "coordinate-x", "coordinate-y"]),
+  select: new Set(["selector", "ref", "coordinate-x", "coordinate-y", "value"]),
+  press: new Set(["selector", "ref", "coordinate-x", "coordinate-y"]),
   scroll: new Set(["selector", "direction", "amount"]),
   screenshot: new Set(["output"]),
   "get-page-info": new Set(),
@@ -74,6 +90,12 @@ const COMMAND_FLAGS = Object.freeze({
   "go-forward": new Set(),
   reload: new Set(),
   "wait-for-selector": new Set(["timeout-ms"]),
+  "request-help": new Set([
+    "title", "target-selector", "timeout-ms", "completion-url-contains",
+    "completion-selector", "completion-match", "stable-for-ms",
+  ]),
+  console: new Set(["since", "limit"]),
+  network: new Set(["since", "limit"]),
   action: new Set(["output"]),
 });
 
@@ -316,6 +338,9 @@ function actionParams(command, positional, flags) {
     case "find-elements":
       requirePositionals(positional, 1);
       return compact({ action: "find_elements", selector: optionalStringFlag(flags, "selector") });
+    case "observe":
+      requirePositionals(positional, 1);
+      return { action: "observe" };
     case "click":
       requirePositionals(positional, 1);
       return targetParams("click", flags);
@@ -331,6 +356,29 @@ function actionParams(command, positional, flags) {
         text,
         submit: booleanFlag(flags, "submit", false),
       };
+    }
+    case "hover":
+      requirePositionals(positional, 1);
+      return targetParams("hover", flags);
+    case "select": {
+      if (positional.length > 2) requirePositionals(positional, 2);
+      if (positional.length === 2 && flags.has("value")) {
+        throw new CliError("DUPLICATE_VALUE", "Provide select value either positionally or with --value");
+      }
+      const value = flags.has("value") ? String(flags.get("value")) : positional[1];
+      if (value === undefined) throw new CliError("VALUE_REQUIRED", "select requires value or --value");
+      if (value.length > 240) {
+        throw new CliError("VALUE_TOO_LONG", "select value must not exceed 240 characters");
+      }
+      return { ...targetParams("select", flags), value };
+    }
+    case "press": {
+      requirePositionals(positional, 2);
+      const key = positional[1];
+      if (!PRESS_KEYS.has(key)) {
+        throw new CliError("INVALID_KEY", `press key must be one of: ${[...PRESS_KEYS].join(", ")}`);
+      }
+      return { ...optionalTargetParams("press", flags), key };
     }
     case "scroll":
       requirePositionals(positional, 1);
@@ -365,6 +413,58 @@ function actionParams(command, positional, flags) {
         selector: positional[1],
         timeout_ms: integerFlag(flags, "timeout-ms", 5_000),
       };
+    case "request-help": {
+      requirePositionals(positional, 2);
+      if (!positional[1].trim()) throw new CliError("PROMPT_REQUIRED", "request-help prompt cannot be blank");
+      if (positional[1].length > 600) {
+        throw new CliError("PROMPT_TOO_LONG", "request-help prompt must not exceed 600 characters");
+      }
+      const title = optionalStringFlag(flags, "title");
+      if (title !== undefined && title.length > 120) {
+        throw new CliError("TITLE_TOO_LONG", "--title must not exceed 120 characters");
+      }
+      const urlContains = optionalStringFlag(flags, "completion-url-contains");
+      const selectorExists = optionalStringFlag(flags, "completion-selector");
+      const targetSelector = optionalStringFlag(flags, "target-selector");
+      for (const [name, value, maximum] of [
+        ["--target-selector", targetSelector, 240],
+        ["--completion-url-contains", urlContains, 320],
+        ["--completion-selector", selectorExists, 240],
+      ]) {
+        if (value !== undefined && !value.trim()) {
+          throw new CliError("EMPTY_SELECTOR_OR_CRITERION", `${name} cannot be blank`);
+        }
+        if (value !== undefined && value.length > maximum) {
+          throw new CliError("VALUE_TOO_LONG", `${name} must not exceed ${maximum} characters`);
+        }
+      }
+      const completionMatch = optionalStringFlag(flags, "completion-match") ?? "any";
+      if (!["any", "all"].includes(completionMatch)) {
+        throw new CliError("INVALID_COMPLETION_MATCH", "--completion-match must be any or all");
+      }
+      const completion = (urlContains !== undefined || selectorExists !== undefined) ? compact({
+        url_contains: urlContains,
+        selector_exists: selectorExists,
+        match: completionMatch,
+        stable_for_ms: integerFlag(flags, "stable-for-ms", 0, { min: 0, max: 5_000 }),
+      }) : undefined;
+      return compact({
+        action: "request_help",
+        prompt: positional[1],
+        title,
+        target_selector: targetSelector,
+        timeout_ms: integerFlag(flags, "timeout-ms", 300_000, { min: 1_000, max: 300_000 }),
+        completion_criteria: completion,
+      });
+    }
+    case "console":
+    case "network":
+      requirePositionals(positional, 1);
+      return {
+        action: command,
+        since: integerFlag(flags, "since", 0, { min: 0 }),
+        limit: integerFlag(flags, "limit", 50, { min: 1, max: 100 }),
+      };
     case "action": {
       requirePositionals(positional, 2);
       try {
@@ -387,21 +487,41 @@ function actionParams(command, positional, flags) {
 }
 
 function targetParams(action, flags) {
+  const target = optionalTargetParams(action, flags);
+  if (target.selector === undefined && target.ref === undefined && target.coordinate_x === undefined) {
+    throw new CliError("TARGET_REQUIRED", `${action} requires --selector, --ref, or both coordinates`);
+  }
+  return target;
+}
+
+function optionalTargetParams(action, flags) {
   const selector = optionalStringFlag(flags, "selector");
+  const ref = optionalStringFlag(flags, "ref");
+  if (ref !== undefined && !REF_PATTERN.test(ref)) {
+    throw new CliError("INVALID_REF", "--ref must come from the latest observe result");
+  }
   const hasX = flags.has("coordinate-x");
   const hasY = flags.has("coordinate-y");
   if (hasX !== hasY) {
     throw new CliError("COORDINATE_PAIR_REQUIRED", "--coordinate-x and --coordinate-y must be used together");
   }
-  if (selector === undefined && !hasX) {
-    throw new CliError("TARGET_REQUIRED", `${action} requires --selector or both coordinates`);
+  const targetCount = Number(selector !== undefined) + Number(ref !== undefined) + Number(hasX);
+  if (targetCount > 1) {
+    throw new CliError("AMBIGUOUS_TARGET", `${action} accepts exactly one target`);
   }
   return compact({
     action,
     selector,
+    ref,
     coordinate_x: hasX ? integerFlag(flags, "coordinate-x", undefined) : undefined,
     coordinate_y: hasY ? integerFlag(flags, "coordinate-y", undefined) : undefined,
   });
+}
+
+function actionRequestTimeout(params, flags) {
+  if (params.action !== "request_help") return undefined;
+  const actionTimeout = Number.isInteger(params.timeout_ms) ? params.timeout_ms : 300_000;
+  return Math.max(requestTimeout(flags), Math.min(Math.max(actionTimeout, 1_000), 300_000) + 10_000);
 }
 
 function compact(value) {
@@ -603,6 +723,7 @@ async function browserActionCommand({
           leaseId,
           params,
           requestId,
+          timeoutMs: actionRequestTimeout(params, flags),
           signal,
         }),
         { abortOnSignal: false, cancel },
@@ -882,13 +1003,19 @@ function printHelp() {
   process.stderr.write("  get-readable                  Extract readable Markdown (alias: read)\n");
   process.stderr.write("  get-text                      Extract text, optionally under --selector\n");
   process.stderr.write("  find-elements                 Find interactive elements\n");
-  process.stderr.write("  click                         Click --selector or coordinates\n");
-  process.stderr.write("  type TEXT                     Type into --selector or coordinates\n");
+  process.stderr.write("  observe                       Semantically observe controls and ephemeral refs\n");
+  process.stderr.write("  click                         Click --selector, --ref, or coordinates\n");
+  process.stderr.write("  type TEXT                     Type into --selector, --ref, or coordinates\n");
+  process.stderr.write("  hover                         Hover --selector, --ref, or coordinates\n");
+  process.stderr.write("  select VALUE                  Select one option under --selector or --ref\n");
+  process.stderr.write("  press KEY                     Press a bounded key, optionally at a target\n");
   process.stderr.write("  scroll                        Scroll up/down, optionally under --selector\n");
   process.stderr.write("  screenshot --output PATH      Save a private screenshot file\n");
   process.stderr.write("  get-page-info                 Inspect page metadata (alias: page-info)\n");
   process.stderr.write("  go-back | go-forward | reload Navigate browser history\n");
   process.stderr.write("  wait-for-selector SELECTOR    Wait for a CSS selector\n");
+  process.stderr.write("  request-help PROMPT           Hand control to the user with a bounded timeout\n");
+  process.stderr.write("  console | network             Read bounded cursor-based diagnostics\n");
   process.stderr.write("  action JSON                   Raw browser.execute params escape hatch\n\n");
   process.stderr.write("Global flags: --host --port --token --request-timeout-ms --help\n");
   process.stderr.write("JSON is written to stdout. Diagnostics and help are written to stderr.\n");

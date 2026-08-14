@@ -7,6 +7,7 @@ Eta Browser is a separately installable Android WebView browser designed for loc
 - the `eta-browser` Node.js CLI;
 - a Pi extension exposing the `eta_browser_use` custom tool;
 - bounded text and screenshot payloads compatible with Eta's browser action contract.
+- bounded semantic observation, explicit user handoff, interaction extensions, and read-only diagnostics layered additively on protocol version 2.
 
 The Android application ID and namespace are `com.thoitiettxl.eta`. Version `1.0.0` is a clean installation and does not migrate private data from the former development package `fuck.andes.browser`.
 
@@ -48,6 +49,8 @@ Prerequisites:
 Host-side checks:
 
 ```sh
+node scripts/check-browser-action-contract.mjs
+node --test scripts/check-browser-action-contract.test.mjs
 npm --prefix tools/eta-browser-cli run check
 npm --prefix tools/eta-browser-cli test
 npm --prefix pi/eta-browser-extension install --ignore-scripts --no-package-lock
@@ -55,11 +58,12 @@ npm --prefix pi/eta-browser-extension run check
 npm --prefix pi/eta-browser-extension test
 ```
 
-Android build and lint are authoritative through GitHub Actions:
+Android build, lint, and unit tests are authoritative through GitHub Actions:
 
 ```sh
 ./gradlew --no-daemon --no-configuration-cache :app:assembleDebug
 ./gradlew --no-daemon --no-configuration-cache :app:lintDebug
+./gradlew --no-daemon --no-configuration-cache :app:testDebugUnitTest
 ```
 
 Installed-APK behavior remains the runtime acceptance gate. See [docs/VALIDATION.md](docs/VALIDATION.md).
@@ -68,7 +72,9 @@ Installed-APK behavior remains the runtime acceptance gate. See [docs/VALIDATION
 
 Protocol version 2 uses one authenticated JSON request per TCP connection. A client must acquire an opaque lease before browser execution or reset. Only one lease and one active operation are allowed. Cancellation requires the exact client, lease, and request identity; reset is non-cancellable.
 
-The browser exposes 13 actions: `navigate`, `get_readable`, `get_text`, `find_elements`, `click`, `type`, `scroll`, `screenshot`, `get_page_info`, `go_back`, `go_forward`, `reload`, and `wait_for_selector`.
+The Eta-compatible core remains 13 actions: `navigate`, `get_readable`, `get_text`, `find_elements`, `click`, `type`, `scroll`, `screenshot`, `get_page_info`, `go_back`, `go_forward`, `reload`, and `wait_for_selector`.
+
+The standalone app adds seven bounded protocol-v2 extensions: semantic `observe` with ephemeral refs; `hover`, `select`, and `press`; explicit `request_help` user handoff; and memory-only `console` and callback-based `network` diagnostics. These additions do not expose arbitrary JavaScript, network interception, headers, bodies, cookies, or remote control.
 
 ## License
 

@@ -35,3 +35,4 @@ decision into `docs/decisions/`; keep task-local choices in the plan.
 ## Completed Plans
 
 - [`completed/story-6-runtime-proof.md`](completed/story-6-runtime-proof.md): clean-install and device acceptance for the standalone extraction.
+- [`completed/browser-agent-handoff-observation.md`](completed/browser-agent-handoff-observation.md): bounded semantic observation, explicit human handoff, interaction extensions, diagnostics, Android CI, and installed-device acceptance.

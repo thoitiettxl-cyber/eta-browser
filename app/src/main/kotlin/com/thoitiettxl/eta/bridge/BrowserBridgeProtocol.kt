@@ -182,6 +182,7 @@ internal class BrowserBridgeProtocol(
             .put("title", browser.title)
             .put("is_loading", browser.isLoading)
             .put("is_user_controlling", browser.isUserControlling)
+            .put("human_handoff_pending", browser.isHumanHandoffPending)
     }
 
     private fun requiredLeaseId(request: JSONObject): String {

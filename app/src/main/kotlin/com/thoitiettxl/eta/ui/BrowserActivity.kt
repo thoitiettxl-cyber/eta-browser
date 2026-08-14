@@ -13,6 +13,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
+import com.thoitiettxl.eta.core.BrowserHumanHandoffOutcome
 import com.thoitiettxl.eta.core.BrowserSessionEngine
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -28,19 +29,38 @@ class BrowserActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var container: FrameLayout
     private lateinit var userControlSwitch: Switch
+    private lateinit var handoffPanel: LinearLayout
+    private lateinit var handoffTitle: TextView
+    private lateinit var handoffPrompt: TextView
     private val userActionViews = mutableListOf<View>()
     private var addressFocused = false
 
     private val refresh = object : Runnable {
         override fun run() {
             val snapshot = BrowserSessionEngine.snapshots.value
+            val handoff = BrowserSessionEngine.activeHumanHandoff()
+            val handoffActive = handoff != null
             if (!addressFocused) address.setText(snapshot.displayUrl)
             if (userControlSwitch.isChecked != snapshot.isUserControlling) {
                 userControlSwitch.isChecked = snapshot.isUserControlling
             }
-            userActionViews.forEach { it.isEnabled = snapshot.isUserControlling }
+            userControlSwitch.isEnabled = !handoffActive
+            userActionViews.forEach {
+                it.isEnabled = snapshot.isUserControlling && !handoffActive
+            }
+            handoffPanel.visibility = if (handoffActive) View.VISIBLE else View.GONE
+            if (handoff != null) {
+                handoffTitle.text = handoff.title
+                handoffPrompt.text = handoff.prompt
+            }
             status.text = buildString {
-                append(if (snapshot.isUserControlling) "User control" else "Observing Pi")
+                append(
+                    when {
+                        handoffActive -> "Human handoff"
+                        snapshot.isUserControlling -> "User control"
+                        else -> "Observing Pi"
+                    }
+                )
                 append(" · ")
                 append(if (snapshot.isLoading) "Loading ${snapshot.progress}%" else "Ready")
                 if (snapshot.host.isNotBlank()) append(" · ${snapshot.host}")
@@ -54,17 +74,21 @@ class BrowserActivity : Activity() {
         super.onCreate(savedInstanceState)
         BrowserSessionEngine.initialize(applicationContext)
         setContentView(buildContent())
-        BrowserSessionEngine.setUserControlActive(false)
+        if (BrowserSessionEngine.activeHumanHandoff() == null) {
+            BrowserSessionEngine.setUserControlActive(false)
+        }
         BrowserSessionEngine.attachTo(container, this)
     }
 
     override fun onResume() {
         super.onResume()
+        BrowserSessionEngine.setBrowserActivityVisible(true)
         mainHandler.post(refresh)
     }
 
     override fun onPause() {
         mainHandler.removeCallbacks(refresh)
+        BrowserSessionEngine.setBrowserActivityVisible(false)
         super.onPause()
     }
 
@@ -120,6 +144,46 @@ class BrowserActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
         )
+
+        handoffPanel = LinearLayout(this@BrowserActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            visibility = View.GONE
+
+            handoffTitle = TextView(this@BrowserActivity).apply {
+                textSize = 17f
+            }
+            addView(handoffTitle, matchWidth())
+
+            handoffPrompt = TextView(this@BrowserActivity).apply {
+                textSize = 14f
+                setPadding(0, dp(6), 0, dp(8))
+            }
+            addView(handoffPrompt, matchWidth())
+
+            addView(
+                LinearLayout(this@BrowserActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.END
+                    addView(
+                        weightedButton("Cancel") {
+                            BrowserSessionEngine.resolveHumanHandoff(
+                                BrowserHumanHandoffOutcome.CANCELLED,
+                            )
+                        },
+                    )
+                    addView(
+                        weightedButton("Done") {
+                            BrowserSessionEngine.resolveHumanHandoff(
+                                BrowserHumanHandoffOutcome.CONTINUED,
+                            )
+                        },
+                    )
+                },
+                matchWidth(),
+            )
+        }
+        addView(handoffPanel, matchWidth())
 
         addView(
             LinearLayout(this@BrowserActivity).apply {
@@ -214,6 +278,12 @@ class BrowserActivity : Activity() {
             isAllCaps = false
             setOnClickListener { action() }
         }
+
+    private fun matchWidth(): ViewGroup.LayoutParams =
+        ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        )
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }

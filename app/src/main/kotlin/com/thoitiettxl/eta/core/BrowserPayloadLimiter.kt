@@ -11,17 +11,27 @@ internal object BrowserPayloadLimiter {
 
         fun encodedSize(): Int = envelope.toString().toByteArray(Charsets.UTF_8).size
 
-        envelope.optJSONArray("elements")?.let { elements ->
-            if (encodedSize() > maxBytes) {
-                val originalCount = elements.length()
-                envelope.put("elements_truncated", true)
-                envelope.put("truncated", true)
-                while (elements.length() > 0 && encodedSize() > maxBytes) {
-                    elements.remove(elements.length() - 1)
-                    envelope.put("element_count", elements.length())
-                }
-                if (elements.length() == originalCount) {
-                    envelope.remove("elements_truncated")
+        listOf(
+            Triple("elements", "element_count", "elements_truncated"),
+            Triple("entries", "count", "entries_truncated"),
+            Triple("events", "count", "events_truncated"),
+        ).forEach { (arrayKey, countKey, truncatedKey) ->
+            envelope.optJSONArray(arrayKey)?.let { values ->
+                if (encodedSize() > maxBytes) {
+                    val originalCount = values.length()
+                    envelope.put(truncatedKey, true)
+                    envelope.put("truncated", true)
+                    while (values.length() > 0 && encodedSize() > maxBytes) {
+                        values.remove(values.length() - 1)
+                        envelope.put(countKey, values.length())
+                        if (arrayKey == "entries" || arrayKey == "events") {
+                            val nextSince = values.optJSONObject(values.length() - 1)
+                                ?.optInt("seq", envelope.optInt("since", 0))
+                                ?: envelope.optInt("since", 0)
+                            envelope.put("next_since", nextSince)
+                        }
+                    }
+                    if (values.length() == originalCount) envelope.remove(truncatedKey)
                 }
             }
         }

@@ -32,6 +32,11 @@ const cases = [
     params: { action: "find_elements", selector: "button" },
   },
   {
+    name: "observe",
+    args: ["observe"],
+    params: { action: "observe" },
+  },
+  {
     name: "click selector",
     args: ["click", "--selector", "#submit"],
     params: { action: "click", selector: "#submit" },
@@ -45,6 +50,21 @@ const cases = [
     name: "type",
     args: ["type", "hello", "--selector", "input", "--submit"],
     params: { action: "type", selector: "input", text: "hello", submit: true },
+  },
+  {
+    name: "hover ref",
+    args: ["hover", "--ref", "@e7"],
+    params: { action: "hover", ref: "@e7" },
+  },
+  {
+    name: "select",
+    args: ["select", "active", "--selector", "select#state"],
+    params: { action: "select", selector: "select#state", value: "active" },
+  },
+  {
+    name: "press",
+    args: ["press", "Enter", "--ref", "@e8"],
+    params: { action: "press", ref: "@e8", key: "Enter" },
   },
   {
     name: "scroll",
@@ -77,9 +97,46 @@ const cases = [
     params: { action: "wait_for_selector", selector: ".ready", timeout_ms: 900 },
   },
   {
+    name: "request_help",
+    args: [
+      "request-help", "Complete verification", "--title", "Verification",
+      "--target-selector", "#challenge", "--timeout-ms", "5000",
+      "--completion-url-contains", "/dashboard", "--completion-selector", "#account",
+      "--completion-match", "any", "--stable-for-ms", "500",
+    ],
+    params: {
+      action: "request_help",
+      prompt: "Complete verification",
+      title: "Verification",
+      target_selector: "#challenge",
+      timeout_ms: 5000,
+      completion_criteria: {
+        url_contains: "/dashboard",
+        selector_exists: "#account",
+        match: "any",
+        stable_for_ms: 500,
+      },
+    },
+  },
+  {
+    name: "console",
+    args: ["console", "--since", "3", "--limit", "20"],
+    params: { action: "console", since: 3, limit: 20 },
+  },
+  {
+    name: "network",
+    args: ["network", "--since", "4", "--limit", "25"],
+    params: { action: "network", since: 4, limit: 25 },
+  },
+  {
     name: "raw action alias",
     args: ["action", '{"action":"get_text","selector":"article"}'],
     params: { action: "get_text", selector: "article" },
+  },
+  {
+    name: "raw request_help default timeout",
+    args: ["action", '{"action":"request_help","prompt":"Continue"}'],
+    params: { action: "request_help", prompt: "Continue" },
   },
 ];
 

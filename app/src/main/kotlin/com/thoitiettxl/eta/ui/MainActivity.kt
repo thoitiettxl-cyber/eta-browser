@@ -202,6 +202,7 @@ class MainActivity : Activity() {
             if (browser.title.isNotBlank()) append("\nTitle: ${browser.title}")
             append("\nLoading: ${browser.isLoading}")
             append("\nUser controlling: ${browser.isUserControlling}")
+            append("\nHuman handoff pending: ${browser.isHumanHandoffPending}")
             browser.error?.let { append("\nError: $it") }
         }
     }

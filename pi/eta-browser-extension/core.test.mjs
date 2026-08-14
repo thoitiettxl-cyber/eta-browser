@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
-import { executeEtaBrowser } from "./core.mjs";
+import { BROWSER_ACTIONS, executeEtaBrowser } from "./core.mjs";
 
 const TOKEN = "eta-browser-extension-test-token-123456789";
 
@@ -215,5 +215,130 @@ test("reset ignores abort after dispatch because reset is non-cancellable", asyn
     const result = await executeEtaBrowser({ action: "reset" }, controller.signal, env);
     assert.match(result.content[0].text, /"status":"ok"/);
     assert.deepEqual(methods, ["browser.reset"]);
+  }));
+});
+
+test("publishes the Eta core plus seven bounded standalone actions", () => {
+  assert.equal(BROWSER_ACTIONS.length, 20);
+  for (const action of ["observe", "hover", "select", "press", "request_help", "console", "network"]) {
+    assert.ok(BROWSER_ACTIONS.includes(action));
+  }
+  assert.ok(!BROWSER_ACTIONS.includes("evaluate"));
+});
+
+test("semantic refs and interaction parameters are forwarded without lease exposure", async () => {
+  const expected = [
+    { action: "observe" },
+    { action: "hover", ref: "@e7" },
+    { action: "select", ref: "@e8", values: ["one", "two"] },
+    { action: "press", key: "Enter", ref: "@e9" },
+  ];
+  let index = 0;
+  await withBridge((request) => {
+    assert.equal(request.method, "browser.execute");
+    assert.deepEqual(request.params, expected[index]);
+    const action = expected[index].action;
+    index += 1;
+    return success(request, { browser: { ok: true, action, status: "ok" }, images: [] });
+  }, async (port) => withConfig(port, "stored-secret-lease", async (env) => {
+    for (const input of expected) {
+      const result = await executeEtaBrowser(input, undefined, env);
+      assert.doesNotMatch(JSON.stringify(result), /stored-secret-lease/);
+    }
+  }));
+  assert.equal(index, expected.length);
+});
+
+test("request_help forwards bounded handoff criteria and remains cancellable", async () => {
+  const controller = new AbortController();
+  let executeRequest;
+  let stopRequest;
+  await withBridge((request) => {
+    if (request.method === "browser.execute") {
+      executeRequest = request;
+      assert.deepEqual(request.params, {
+        action: "request_help",
+        prompt: "Complete verification",
+        title: "Verification",
+        target_selector: "#challenge",
+        completion_criteria: {
+          url_contains: "/dashboard",
+          selector_exists: "#account",
+          match: "any",
+          stable_for_ms: 500,
+        },
+        timeout_ms: 300000,
+      });
+      setTimeout(() => controller.abort(), 20);
+      return undefined;
+    }
+    if (request.method === "browser.stop") {
+      stopRequest = request;
+      return success(request, { stopped: true });
+    }
+    throw new Error(`Unexpected ${request.method}`);
+  }, async (port) => withConfig(port, "stored-secret-lease", async (env) => {
+    await assert.rejects(
+      executeEtaBrowser({
+        action: "request_help",
+        prompt: "Complete verification",
+        title: "Verification",
+        target_selector: "#challenge",
+        completion_criteria: {
+          url_contains: "/dashboard",
+          selector_exists: "#account",
+          match: "any",
+          stable_for_ms: 500,
+        },
+        timeout_ms: 300000,
+      }, controller.signal, env),
+      /\[CANCELLED\]/,
+    );
+  }));
+  assert.equal(stopRequest.lease_id, executeRequest.lease_id);
+  assert.equal(stopRequest.request_id, executeRequest.id);
+});
+
+test("diagnostic cursors are forwarded and invalid targets fail before transport", async () => {
+  let calls = 0;
+  await withBridge((request) => {
+    calls += 1;
+    assert.deepEqual(request.params, { action: "network", since: 12, limit: 25 });
+    return success(request, {
+      browser: {
+        ok: true,
+        action: "network",
+        status: "ok",
+        captures_headers: false,
+        captures_bodies: false,
+      },
+      images: [],
+    });
+  }, async (port) => withConfig(port, "stored-secret-lease", async (env) => {
+    const result = await executeEtaBrowser({ action: "network", since: 12, limit: 25 }, undefined, env);
+    assert.match(result.content[0].text, /"captures_headers":false/);
+    await assert.rejects(
+      executeEtaBrowser({ action: "click", selector: "button", ref: "@e1" }, undefined, env),
+      /\[AMBIGUOUS_TARGET\]/,
+    );
+    await assert.rejects(
+      executeEtaBrowser({ action: "request_help", prompt: "Continue", completion_criteria: {} }, undefined, env),
+      /\[COMPLETION_CRITERIA_REQUIRED\]/,
+    );
+  }));
+  assert.equal(calls, 1);
+});
+
+test("request_help without explicit timeout uses the bounded default contract", async () => {
+  await withBridge((request) => {
+    assert.equal(request.method, "browser.execute");
+    assert.deepEqual(request.params, { action: "request_help", prompt: "Continue" });
+    return success(request, {
+      browser: { ok: true, action: "request_help", status: "continued", outcome: "continued" },
+      images: [],
+    });
+  }, async (port) => withConfig(port, "stored-secret-lease", async (env) => {
+    const result = await executeEtaBrowser({ action: "request_help", prompt: "Continue" }, undefined, env);
+    assert.match(result.content[0].text, /"outcome":"continued"/);
   }));
 });

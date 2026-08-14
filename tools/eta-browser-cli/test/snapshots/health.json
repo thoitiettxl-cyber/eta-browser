@@ -12,6 +12,7 @@
     "host": "example.com",
     "title": "Example Domain",
     "is_loading": false,
-    "is_user_controlling": false
+    "is_user_controlling": false,
+    "human_handoff_pending": false
   }
 }

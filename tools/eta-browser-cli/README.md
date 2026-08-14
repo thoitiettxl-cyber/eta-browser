@@ -145,17 +145,25 @@ authenticated bridge operations.
 
 ## Browser commands
 
-All 13 actions from Eta's `browser_use` catalog have a high-level command:
+The original 13 actions from Eta's `browser_use` catalog remain the compatibility core. Eta Browser also exposes seven additive standalone actions under protocol version 2.
 
 ```sh
 eta-browser navigate URL [--timeout-ms 25000]
 eta-browser get-readable [--offset 0] [--max-chars 8000]
 eta-browser get-text [--selector CSS] [--offset 0] [--max-chars 8000]
 eta-browser find-elements [--selector CSS]
+eta-browser observe
 eta-browser click --selector CSS
+eta-browser click --ref @e7
 eta-browser click --coordinate-x X --coordinate-y Y
 eta-browser type TEXT --selector CSS [--submit]
+eta-browser type TEXT --ref @e7 [--submit]
 eta-browser type TEXT --coordinate-x X --coordinate-y Y [--submit]
+eta-browser hover --selector CSS
+eta-browser hover --ref @e7
+eta-browser select VALUE --selector CSS
+eta-browser select VALUE --ref @e7
+eta-browser press Enter [--selector CSS | --ref @e7]
 eta-browser scroll [--selector CSS] [--direction up|down] [--amount 600]
 eta-browser screenshot --output PATH
 eta-browser get-page-info
@@ -163,7 +171,14 @@ eta-browser go-back
 eta-browser go-forward
 eta-browser reload
 eta-browser wait-for-selector CSS [--timeout-ms 5000]
+eta-browser request-help PROMPT [--title TITLE] [--target-selector CSS] [--timeout-ms 300000]
+eta-browser console [--since 0] [--limit 50]
+eta-browser network [--since 0] [--limit 50]
 ```
+
+`observe` returns at most 32 visible semantic controls. Its `@eN` refs are valid only for the latest observation in the current document. A later observation, navigation, reset, document replacement, or disconnected element makes an older ref fail with `STALE_ELEMENT_REF`; observe again rather than falling back blindly to coordinates.
+
+High-level `select` accepts one option value. The raw `action` command and Pi adapter also accept a bounded `values` array for multi-select controls. `press` accepts `Enter`, `Escape`, `Tab`, `Shift+Tab`, arrow keys, `Home`, `End`, `PageUp`, `PageDown`, `Space`, `Backspace`, `Delete`, and `Ctrl+A`.
 
 Compatibility aliases:
 
@@ -180,6 +195,31 @@ eta-browser action '{"action":"get_text","selector":"article","max_chars":12000}
 
 Prefer the high-level commands; `action` is for forward-compatible repair or testing, not the normal interface.
 
+## Human handoff
+
+Use `request-help` when the page requires login, CAPTCHA, OTP, payment confirmation, sensitive consent, or another user-only step:
+
+```sh
+eta-browser request-help "Complete verification, then tap Done" \
+  --title "Verification required" \
+  --target-selector '#challenge' \
+  --completion-url-contains /dashboard \
+  --completion-selector '#account-menu' \
+  --completion-match any \
+  --stable-for-ms 1000 \
+  --timeout-ms 300000
+```
+
+The bridge keeps the authenticated lease and active request while BrowserActivity gives the user the shared WebView. The notification is generic and does not contain the prompt or page content. Result outcomes are `continued`, `cancelled`, `timed_out`, and `completed`. The action never returns values entered by the user. It remains cancellable through exact-request `browser.stop` and signals.
+
+After `continued` or `completed`, observe the page again before using any prior selector or ref assumption. Treat `cancelled` as rejection and do not seek a bypass. Do not automatically repeat `timed_out`.
+
+## Read-only diagnostics
+
+`console` and `network` read bounded in-memory rings using `since`/`next_since` cursors and limits from 1 to 100. Reset clears both buffers.
+
+Console entries contain bounded level/message/source/line metadata and are consumed instead of printed to Android logs. Network entries come from normal WebView request/error callbacks. URLs omit user-info, query, and fragment; headers, bodies, cookies, authorization data, timing, and interception are never captured. Successful response status coverage is incomplete, so `network` is not a DevTools-equivalent trace.
+
 ## Timeouts and cancellation
 
 The transport timeout defaults to 45 seconds and is bounded between 500 ms and 120 seconds:
@@ -188,7 +228,7 @@ The transport timeout defaults to 45 seconds and is bounded between 500 ms and 1
 eta-browser health --request-timeout-ms 5000
 ```
 
-Browser-specific timeouts are sent through `--timeout-ms` for `navigate` and `wait-for-selector`, where the Android browser applies its own documented clamps.
+Browser-specific timeouts are sent through `--timeout-ms`: navigation clamps to 25 seconds, selector waits to 30 seconds, and human handoff to five minutes. The CLI automatically keeps the request transport alive slightly longer than a bounded `request-help` timeout.
 
 On `SIGINT` or `SIGTERM` during `browser.execute`, the CLI sends `browser.stop` using the same `client_id`, lease, and exact active request ID before closing the request connection. Reset is non-cancellable by protocol; signals do not send `browser.stop`. The CLI continues waiting for its response or bounded transport timeout, then reports interruption.
 
@@ -214,7 +254,10 @@ eta-browser navigate https://example.com
 eta-browser wait-for-selector h1
 eta-browser get-readable --max-chars 2000
 eta-browser find-elements --selector a
+eta-browser observe
 eta-browser get-page-info
+eta-browser console --limit 10
+eta-browser network --limit 20
 eta-browser screenshot --output /tmp/eta-browser-example.jpg
 test -s /tmp/eta-browser-example.jpg
 eta-browser session release
@@ -230,6 +273,8 @@ For cancellation proof, run a long `navigate` or `wait-for-selector`, send `SIGI
 - `SESSION_BUSY`: another client or a forgotten local lease owns the single browser session. Release it from the owning config; otherwise disable/re-enable or revoke the bridge from the app.
 - `STALE_CLIENT`: local lease state no longer matches the bridge. Run `eta-browser session forget`, then acquire a new session.
 - `USER_CONTROL_ACTIVE`: leave the human-takeover browser screen before retrying automation.
+- `HUMAN_HANDOFF_UNAVAILABLE`: open Eta Browser's browser screen in the foreground or allow its human-handoff notification channel, then retry once.
+- `STALE_ELEMENT_REF`: run `observe` again; never assume an older ref still names the same element.
 - `REQUEST_TIMEOUT`: increase `--request-timeout-ms` only within the documented bound and investigate bridge/browser state; do not remove the timeout.
 - Full recovery: disable the bridge in Eta Browser. Revoking credentials additionally clears pairing and stops the bridge; browser reset is separate and clears page/cookies/history.
 
@@ -240,4 +285,4 @@ npm run check
 npm test
 ```
 
-The integration suite uses a fake TCP bridge and covers stable JSON snapshots, exit codes, private config, all 13 actions, persistent sessions, screenshots, bounded timeout, exact-request signal cancellation, and execution from a cwd outside the repository.
+The integration suite uses a fake TCP bridge and covers stable JSON snapshots, exit codes, private config, the 13-action compatibility core plus seven standalone actions, persistent sessions, screenshots, bounded handoff timeout, exact-request signal cancellation, and execution from a cwd outside the repository.
