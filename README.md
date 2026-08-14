@@ -11,6 +11,8 @@ Eta Browser is a separately installable Android WebView browser designed for loc
 
 The Android application ID and namespace are `com.thoitiettxl.eta`. Version `1.0.0` is a clean installation and does not migrate private data from the former development package `fuck.andes.browser`.
 
+> **License notice:** Copyright © 2026 [thoitiettxl-cyber](https://github.com/thoitiettxl-cyber). This project is licensed under [PolyForm Noncommercial 1.0.0](LICENSE) for permitted noncommercial use. Commercial use requires the copyright holder's prior written permission.
+
 ## Security boundary
 
 Eta Browser intentionally preserves Eta's permissive WebView profile. It is **not a security sandbox**. Local and mixed content, third-party cookies, autoplay, JavaScript, and form submission remain enabled, and the app does not add URL, DNS, IP, redirect, or Service Worker filtering.
@@ -23,6 +25,7 @@ External control is opt-in, bound to loopback, authenticated, visible through a 
 - `tools/eta-browser-cli/`: Node 20+ CLI and reusable transport/config modules.
 - `pi/eta-browser-extension/`: Pi custom-tool adapter.
 - `pi/skills/eta-browser/`: companion Pi skill.
+- `pi/skills/eta-browser-skill-forge/`: creates reviewable site-specific Pi skills from verified Eta Browser workflows.
 - `docs/`: architecture, installation, validation, and release guidance.
 
 Eta itself keeps its internal browser implementation in the Eta repository. The two repositories do not use a cross-repository Gradle dependency; protocol, action, payload, and installed-device parity evidence are used to control divergence.
@@ -36,7 +39,7 @@ In summary:
 1. Install the CI-built debug APK or a trusted signed release of `com.thoitiettxl.eta`.
 2. Install the CLI from `tools/eta-browser-cli`.
 3. Run `eta-browser pair`, enter the one-time token in the app, then explicitly enable the bridge.
-4. Install the Pi adapter with `scripts/install-pi.sh` when Pi integration is required.
+4. Install the Pi adapter and repository-owned Pi skills with `scripts/install-pi.sh` when Pi integration is required.
 
 ## Development
 
@@ -56,6 +59,7 @@ npm --prefix tools/eta-browser-cli test
 npm --prefix pi/eta-browser-extension install --ignore-scripts --no-package-lock
 npm --prefix pi/eta-browser-extension run check
 npm --prefix pi/eta-browser-extension test
+python3 -B -m unittest pi/skills/eta-browser-skill-forge/scripts/test_validate_generated_skill.py
 ```
 
 Android build, lint, and unit tests are authoritative through GitHub Actions:

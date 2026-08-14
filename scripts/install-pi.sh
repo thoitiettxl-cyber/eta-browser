@@ -5,10 +5,12 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 CLI_SOURCE="$ROOT/tools/eta-browser-cli"
 EXTENSION_SOURCE="$ROOT/pi/eta-browser-extension"
 SKILL_SOURCE="$ROOT/pi/skills/eta-browser"
+FORGE_SKILL_SOURCE="$ROOT/pi/skills/eta-browser-skill-forge"
 LOCAL_PREFIX=${ETA_BROWSER_LOCAL_PREFIX:-"$HOME/.local"}
 PI_HOME_DIR=${pi_HOME:-"$HOME/.pi"}
 EXTENSION_TARGET="$PI_HOME_DIR/agent/extensions/eta-browser"
 SKILL_TARGET="$PI_HOME_DIR/agent/skills/eta-browser"
+FORGE_SKILL_TARGET="$PI_HOME_DIR/agent/skills/eta-browser-skill-forge"
 
 command -v node >/dev/null 2>&1 || {
     printf '%s\n' 'Node.js 20 or newer is required.' >&2
@@ -21,10 +23,13 @@ command -v npm >/dev/null 2>&1 || {
 
 npm install --global --prefix "$LOCAL_PREFIX" --ignore-scripts --no-package-lock "$CLI_SOURCE"
 
-mkdir -p "$EXTENSION_TARGET" "$SKILL_TARGET"
+mkdir -p "$EXTENSION_TARGET" "$SKILL_TARGET" "$FORGE_SKILL_TARGET/assets" "$FORGE_SKILL_TARGET/scripts"
 cp "$EXTENSION_SOURCE/index.ts" "$EXTENSION_TARGET/index.ts"
 cp "$EXTENSION_SOURCE/core.mjs" "$EXTENSION_TARGET/core.mjs"
 cp "$SKILL_SOURCE/SKILL.md" "$SKILL_TARGET/SKILL.md"
+cp "$FORGE_SKILL_SOURCE/SKILL.md" "$FORGE_SKILL_TARGET/SKILL.md"
+cp "$FORGE_SKILL_SOURCE/assets/site-skill-template.md" "$FORGE_SKILL_TARGET/assets/site-skill-template.md"
+cp "$FORGE_SKILL_SOURCE/scripts/validate-generated-skill.py" "$FORGE_SKILL_TARGET/scripts/validate-generated-skill.py"
 
 ETA_BROWSER_EXTENSION_TARGET="$EXTENSION_TARGET" \
 ETA_BROWSER_CLI_SOURCE="$CLI_SOURCE" \
@@ -51,4 +56,5 @@ npm install --prefix "$EXTENSION_TARGET" --omit=dev --ignore-scripts --no-packag
 printf '%s\n' "Installed eta-browser CLI under $LOCAL_PREFIX"
 printf '%s\n' "Installed Pi extension at $EXTENSION_TARGET"
 printf '%s\n' "Installed Pi skill at $SKILL_TARGET"
+printf '%s\n' "Installed Pi Forge skill at $FORGE_SKILL_TARGET"
 printf '%s\n' 'Restart Pi before using eta_browser_use.'

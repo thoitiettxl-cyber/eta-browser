@@ -59,3 +59,11 @@ Before claiming the semantic observation, human handoff, interaction, or diagnos
 10. both CLI and Pi exercise every additive action against the installed APK.
 
 Synthetic hover/key fidelity and WebView callback-based network coverage must be reported exactly as observed; do not infer CDP-equivalent behavior from host tests.
+
+## Skill Forge acceptance
+
+1. Validate `pi/skills/eta-browser-skill-forge/` with Pi's `quick_validate.py`.
+2. Run `python3 -B -m unittest pi/skills/eta-browser-skill-forge/scripts/test_validate_generated_skill.py`.
+3. Generate one temporary site-specific `SKILL.md`, run the bundled validator, and confirm forbidden refs, sensitive material, alternate browser runtimes, and extra files fail their focused tests.
+4. When browser execution is authorized, exercise one normal generated workflow through serialized `eta_browser_use` calls and verify its observable success contract.
+5. Confirm the installer copies the Forge, template, and validator while generated site skills remain uninstalled and uncommitted.

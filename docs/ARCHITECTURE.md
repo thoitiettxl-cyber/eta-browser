@@ -49,3 +49,5 @@ Text is bounded to approximately 12 KiB. Screenshots are bounded to 1280 by 2400
 `tools/eta-browser-cli` owns stable JSON envelope version 1, private credential/session storage, signal-aware exact cancellation, and exit codes `0`, `2`, `3`, `4`, `5`, `130`, and `143`.
 
 `pi/eta-browser-extension` imports the CLI's public transport and config exports. It exposes `eta_browser_use`; pairing and persistent-session administration remain CLI responsibilities.
+
+`pi/skills/eta-browser-skill-forge` converts an explicitly authorized, verified Eta Browser workflow into one review-only site-specific `SKILL.md`. It uses the same serialized action and human-handoff boundaries and never installs generated skills automatically.

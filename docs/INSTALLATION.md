@@ -50,7 +50,9 @@ Run from the repository root:
 scripts/install-pi.sh
 ```
 
-The installer copies the extension to `~/.pi/agent/extensions/eta-browser`, installs its local CLI package dependency, copies the companion skill to `~/.pi/agent/skills/eta-browser`, and installs the CLI under `~/.local`. Restart Pi, then call `eta_browser_use` with `health`.
+The installer copies the extension to `~/.pi/agent/extensions/eta-browser`, installs its local CLI package dependency, copies the runtime and Forge skills under `~/.pi/agent/skills/`, and installs the CLI under `~/.local`. Restart Pi, then call `eta_browser_use` with `health`.
+
+`eta-browser-skill-forge` creates site-specific skills only in a user-approved review directory. It does not install generated skills automatically.
 
 Allow Eta Browser notifications if `request_help` must alert the user while BrowserActivity is not already visible. The handoff notification contains only a generic instruction; the task prompt appears inside the app.
 

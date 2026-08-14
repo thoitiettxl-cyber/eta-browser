@@ -26,6 +26,8 @@ Console and network diagnostics remain sensitive page data and must be requested
 
 Arbitrary JavaScript evaluation, CDP, credential extraction, and network interception remain outside the external action contract.
 
+The Forge may retain reusable procedure and stable selector guidance only. Generated skills must not retain credentials, cookies, tokens, user-entered form values, sensitive URL data, screenshots, page dumps, transport identifiers, or ephemeral element refs, and remain outside Pi discovery paths until separately reviewed.
+
 ## Recovery
 
 - Disable the bridge to stop accepting new external work.

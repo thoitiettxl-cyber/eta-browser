@@ -92,6 +92,9 @@ jobs:
           node scripts/check-browser-action-contract.mjs
           node --test scripts/check-browser-action-contract.test.mjs
 
+      - name: Validate Eta Browser Skill Forge
+        run: python3 -B -m unittest pi/skills/eta-browser-skill-forge/scripts/test_validate_generated_skill.py
+
       - name: Validate production CLI
         run: |
           npm --prefix tools/eta-browser-cli run check
