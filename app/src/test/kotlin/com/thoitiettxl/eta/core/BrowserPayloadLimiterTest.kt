@@ -56,4 +56,31 @@ class BrowserPayloadLimiterTest {
         assertTrue(decoded.getBoolean("elements_truncated"))
         assertEquals(decoded.getJSONArray("elements").length(), decoded.getInt("element_count"))
     }
+
+    @Test
+    fun `drops trailing diagnostic entries until payload fits`() {
+        listOf("entries" to "console", "events" to "network").forEach { (arrayKey, action) ->
+            val values = JSONArray().apply {
+                repeat(40) { index ->
+                    put(JSONObject().put("seq", index + 1).put("message", "诊断".repeat(200)))
+                }
+            }
+            val payload = BrowserPayloadLimiter.serialize(
+                JSONObject()
+                    .put("ok", true)
+                    .put("action", action)
+                    .put("count", values.length())
+                    .put(arrayKey, values),
+                maxBytes = 2_048,
+            )
+
+            assertTrue(payload.toByteArray(Charsets.UTF_8).size <= 2_048)
+            val decoded = JSONObject(payload)
+            assertTrue(decoded.getJSONArray(arrayKey).length() < 40)
+            assertEquals(decoded.getJSONArray(arrayKey).length(), decoded.getInt("count"))
+            val returned = decoded.getJSONArray(arrayKey)
+            val expectedCursor = returned.optJSONObject(returned.length() - 1)?.getInt("seq") ?: 0
+            assertEquals(expectedCursor, decoded.getInt("next_since"))
+        }
+    }
 }

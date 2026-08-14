@@ -30,7 +30,7 @@ decision into `docs/decisions/`; keep task-local choices in the plan.
 
 ## Active Plans
 
-- None.
+- [`active/browser-agent-handoff-observation.md`](active/browser-agent-handoff-observation.md): bounded semantic observation, explicit human handoff, interaction extensions, and read-only diagnostics.
 
 ## Completed Plans
 

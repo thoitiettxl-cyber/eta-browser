@@ -14,6 +14,7 @@ internal data class BrowserSessionSnapshot(
     val canGoForward: Boolean = false,
     val error: String? = null,
     val isUserControlling: Boolean = false,
+    val isHumanHandoffPending: Boolean = false,
     val lastClientId: String? = null,
     val lastRequestId: String? = null,
 )

@@ -12,14 +12,23 @@ import {
 
 const CLIENT_ID = "eta-browser-cli";
 const RELEASE_RETRY_MS = 100;
+const PRESS_KEYS = new Set([
+  "Enter", "Escape", "Tab", "Shift+Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "Home", "End", "PageUp", "PageDown", "Space", "Backspace", "Delete", "Ctrl+A",
+]);
+const REF_PATTERN = /^@e[1-9][0-9]{0,8}$/;
 
 export const BROWSER_ACTIONS = Object.freeze([
   "navigate",
   "get_readable",
   "get_text",
   "find_elements",
+  "observe",
   "click",
   "type",
+  "hover",
+  "select",
+  "press",
   "scroll",
   "screenshot",
   "get_page_info",
@@ -27,6 +36,9 @@ export const BROWSER_ACTIONS = Object.freeze([
   "go_forward",
   "reload",
   "wait_for_selector",
+  "request_help",
+  "console",
+  "network",
 ]);
 
 export const TOOL_ACTIONS = Object.freeze(["health", ...BROWSER_ACTIONS, "reset"]);
@@ -155,6 +167,7 @@ function actionParams(input) {
     action: input.action,
     url: input.url,
     selector: input.selector,
+    ref: input.ref,
     text: input.text,
     submit: input.submit,
     coordinate_x: input.coordinate_x,
@@ -164,6 +177,15 @@ function actionParams(input) {
     offset: input.offset,
     max_chars: input.max_chars,
     timeout_ms: input.timeout_ms,
+    key: input.key,
+    value: input.value,
+    values: input.values,
+    prompt: input.prompt,
+    title: input.title,
+    target_selector: input.target_selector,
+    completion_criteria: input.completion_criteria,
+    since: input.since,
+    limit: input.limit,
     read_image: input.action === "screenshot" ? true : undefined,
   });
   return params;
@@ -182,21 +204,66 @@ function validateInput(input) {
   if (input.action === "type" && typeof input.text !== "string") {
     throw publicError("TEXT_REQUIRED", "type requires text");
   }
-  if (["click", "type"].includes(input.action)) validateTarget(input);
+  if (["click", "type", "hover", "select"].includes(input.action)) validateTarget(input);
+  if (input.action === "press") {
+    if (!nonBlank(input.key)) throw publicError("KEY_REQUIRED", "press requires key");
+    if (!PRESS_KEYS.has(input.key)) throw publicError("INVALID_KEY", "press key is unsupported");
+    validateTarget(input, false);
+  }
+  if (input.action === "select") {
+    const values = Array.isArray(input.values) ? input.values : [];
+    if (typeof input.value !== "string" && values.length === 0) {
+      throw publicError("VALUE_REQUIRED", "select requires value or values");
+    }
+    if (values.some((value) => typeof value !== "string") || values.length > 16) {
+      throw publicError("INVALID_VALUES", "select values must contain at most 16 strings");
+    }
+    if ([input.value, ...values].some((value) => typeof value === "string" && value.length > 240)) {
+      throw publicError("VALUE_TOO_LONG", "select values must not exceed 240 characters");
+    }
+  }
+  if (input.action === "request_help") {
+    if (!nonBlank(input.prompt)) throw publicError("PROMPT_REQUIRED", "request_help requires prompt");
+    if (input.prompt.length > 600) throw publicError("PROMPT_TOO_LONG", "request_help prompt is too long");
+    if (input.title !== undefined && input.title.length > 120) {
+      throw publicError("TITLE_TOO_LONG", "request_help title is too long");
+    }
+    if (input.target_selector !== undefined && !nonBlank(input.target_selector)) {
+      throw publicError("TARGET_SELECTOR_REQUIRED", "target_selector cannot be blank");
+    }
+    const criteria = input.completion_criteria;
+    if (criteria && !nonBlank(criteria.url_contains) && !nonBlank(criteria.selector_exists)) {
+      throw publicError(
+        "COMPLETION_CRITERIA_REQUIRED",
+        "completion_criteria requires url_contains or selector_exists",
+      );
+    }
+    if (criteria?.match !== undefined && !["any", "all"].includes(criteria.match)) {
+      throw publicError("INVALID_COMPLETION_MATCH", "completion match must be any or all");
+    }
+  }
   if (input.direction !== undefined && !["up", "down"].includes(input.direction)) {
     throw publicError("INVALID_DIRECTION", "direction must be up or down");
   }
 }
 
-function validateTarget(input) {
+function validateTarget(input, required = true) {
   const hasSelector = nonBlank(input.selector);
+  const hasRef = nonBlank(input.ref);
+  if (hasRef && !REF_PATTERN.test(input.ref)) {
+    throw publicError("INVALID_REF", "ref must come from the latest observe result");
+  }
   const hasX = input.coordinate_x !== undefined;
   const hasY = input.coordinate_y !== undefined;
   if (hasX !== hasY) {
     throw publicError("COORDINATE_PAIR_REQUIRED", "coordinate_x and coordinate_y must be provided together");
   }
-  if (!hasSelector && !hasX) {
-    throw publicError("TARGET_REQUIRED", `${input.action} requires selector or coordinates`);
+  const targetCount = Number(hasSelector) + Number(hasRef) + Number(hasX);
+  if (targetCount > 1) {
+    throw publicError("AMBIGUOUS_TARGET", `${input.action} accepts exactly one target`);
+  }
+  if (required && targetCount === 0) {
+    throw publicError("TARGET_REQUIRED", `${input.action} requires selector, ref, or coordinates`);
   }
 }
 
@@ -232,8 +299,9 @@ function textResult(action, value, details) {
 function healthDetails(result) {
   return {
     protocol: result.protocol,
-    available: result.available,
+    available: result.browser_available ?? result.available,
     is_user_controlling: result.is_user_controlling,
+    human_handoff_pending: result.human_handoff_pending,
     session_leased: result.session_leased,
   };
 }
@@ -281,8 +349,10 @@ function publicError(code, message) {
 }
 
 function requestTimeout(input) {
-  const actionTimeout = Number.isInteger(input.timeout_ms) ? input.timeout_ms : 0;
-  return Math.max(45_000, Math.min(actionTimeout + 10_000, 60_000));
+  const actionTimeout = Number.isInteger(input.timeout_ms) ? input.timeout_ms :
+    (input.action === "request_help" ? 300_000 : 0);
+  const maximum = input.action === "request_help" ? 310_000 : 60_000;
+  return Math.max(45_000, Math.min(actionTimeout + 10_000, maximum));
 }
 
 function throwIfAborted(signal) {

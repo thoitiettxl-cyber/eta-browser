@@ -29,7 +29,10 @@ trap 'on_signal TERM' TERM
 "$CLI" wait-for-selector h1
 "$CLI" get-readable --max-chars 2000
 "$CLI" find-elements --selector 'a,button,input'
+"$CLI" observe
 "$CLI" get-page-info
+"$CLI" console --limit 10
+"$CLI" network --limit 20
 "$CLI" screenshot --output "$OUTPUT"
 test -s "$OUTPUT"
 

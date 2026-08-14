@@ -15,6 +15,9 @@ internal object BrowserDomScripts {
           var MAX_URL_CHARS = 320;
           var MAX_DOCUMENT_CHARS = 200000;
           var MAX_SELECTOR_CHARS = 240;
+          var MAX_OBSERVED_ELEMENTS = 32;
+          var REF_STATE_KEY = '__etaBrowserRefStateV1';
+          var HELP_TARGET_KEY = '__etaBrowserHelpTargetV1';
 
           function boundedString(value, limit) {
             var max = Math.max(0, Number(limit) || MAX_FIELD_CHARS);
@@ -80,6 +83,10 @@ internal object BrowserDomScripts {
             if (tag !== 'input') return false;
             var type = String(element.getAttribute('type') || 'text').toLowerCase();
             return !['hidden','file','button','submit','reset','image','checkbox','radio'].includes(type);
+          }
+          function valueBearing(element) {
+            var tag = String(element.tagName || '').toLowerCase();
+            return element.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select';
           }
           function cssEscape(value) {
             if (window.CSS && CSS.escape) return CSS.escape(boundedString(value, 180));
@@ -167,12 +174,59 @@ internal object BrowserDomScripts {
           function visibleText(root, maxChars, nodeLimit, sharedDeadline) {
             return collectVisibleText(root, maxChars, nodeLimit, sharedDeadline).text;
           }
+          function inferredRole(element) {
+            var explicit = cleanInline(element.getAttribute('role'), 48);
+            if (explicit) return explicit;
+            var tag = String(element.tagName || '').toLowerCase();
+            var type = String(element.getAttribute('type') || '').toLowerCase();
+            if (tag === 'a' && element.hasAttribute('href')) return 'link';
+            if (tag === 'button' || ['button','submit','reset','image'].includes(type)) return 'button';
+            if (tag === 'select') return element.multiple ? 'listbox' : 'combobox';
+            if (tag === 'textarea') return 'textbox';
+            if (tag === 'input') {
+              if (type === 'checkbox') return 'checkbox';
+              if (type === 'radio') return 'radio';
+              if (type === 'range') return 'slider';
+              return 'textbox';
+            }
+            if (tag === 'summary') return 'button';
+            return null;
+          }
+          function accessibleName(element, sharedDeadline, allowOwnText) {
+            var direct = cleanInline(element.getAttribute('aria-label'), 160);
+            if (direct) return direct;
+            var labelledBy = cleanInline(element.getAttribute('aria-labelledby'), 240);
+            if (labelledBy) {
+              var labels = [];
+              labelledBy.split(/[\t\r\n ]+/).slice(0, 8).forEach(function(id) {
+                var item = document.getElementById(id);
+                if (item) labels.push(visibleText(item, 160, 200, sharedDeadline));
+              });
+              var joined = cleanInline(labels.join(' '), 160);
+              if (joined) return joined;
+            }
+            if (element.labels && element.labels.length) {
+              var labelText = [];
+              for (var labelIndex = 0; labelIndex < element.labels.length && labelIndex < 4; labelIndex++) {
+                labelText.push(visibleText(element.labels[labelIndex], 160, 300, sharedDeadline));
+              }
+              var labelled = cleanInline(labelText.join(' '), 160);
+              if (labelled) return labelled;
+            }
+            var fallback = cleanInline(
+              element.getAttribute('alt') || element.getAttribute('title') ||
+              element.getAttribute('placeholder'),
+              160
+            );
+            if (fallback) return fallback;
+            return allowOwnText ? visibleText(element, 160, 300, sharedDeadline) : null;
+          }
           function describe(element, sharedDeadline) {
             var rect = element.getBoundingClientRect();
             return {
               selector: selectorFor(element),
               tag: boundedString((element.tagName || '').toLowerCase(), 32),
-              role: cleanInline(element.getAttribute('role'), 48) || null,
+              role: inferredRole(element),
               text: visibleText(element, 160, 400, sharedDeadline),
               aria_label: cleanInline(element.getAttribute('aria-label'), 100),
               placeholder: cleanInline(element.getAttribute('placeholder'), 100),
@@ -184,10 +238,55 @@ internal object BrowserDomScripts {
               }
             };
           }
-          function resolveTarget(selector, x, y) {
+          function semanticDescribe(element, ref, sharedDeadline) {
+            var description = describe(element, sharedDeadline);
+            var exposesValue = valueBearing(element);
+            description.ref = ref;
+            description.text = exposesValue ? null : description.text;
+            description.name = accessibleName(element, sharedDeadline, !exposesValue) || null;
+            description.disabled = !enabled(element);
+            description.editable = editable(element);
+            description.focused = document.activeElement === element;
+            description.checked = ('checked' in element) ? !!element.checked : null;
+            description.selected = ('selected' in element) ? !!element.selected : null;
+            description.expanded = element.hasAttribute('aria-expanded') ?
+              element.getAttribute('aria-expanded') === 'true' : null;
+            description.pressed = element.hasAttribute('aria-pressed') ?
+              element.getAttribute('aria-pressed') === 'true' : null;
+            return description;
+          }
+          function installObservationRefs(elements, documentEpoch) {
+            var previous = window[REF_STATE_KEY];
+            var sameDocument = previous && previous.documentEpoch === documentEpoch;
+            var generation = sameDocument && Number.isFinite(previous.generation) ? previous.generation + 1 : 1;
+            var nextRef = sameDocument && Number.isFinite(previous.nextRef) ? previous.nextRef : 1;
+            var refs = {};
+            var labels = [];
+            elements.slice(0, MAX_OBSERVED_ELEMENTS).forEach(function(element) {
+              if (nextRef > 999999999) nextRef = 1;
+              var label = '@e' + String(nextRef++);
+              refs[label] = element;
+              labels.push(label);
+            });
+            window[REF_STATE_KEY] = {
+              documentEpoch: documentEpoch,
+              generation: generation,
+              nextRef: nextRef,
+              refs: refs
+            };
+            return { generation: generation, labels: labels };
+          }
+          function resolveTarget(selector, ref, x, y, documentEpoch) {
             var target = null;
-            var deadline = Date.now() + 300;
-            if (selector) {
+            if (ref) {
+              var state = window[REF_STATE_KEY];
+              var match = /^@e([1-9][0-9]{0,8})$/.exec(ref);
+              if (!state || state.documentEpoch !== documentEpoch || !match || !state.refs) {
+                throw new Error('STALE_ELEMENT_REF');
+              }
+              target = state.refs[ref];
+              if (!target || !target.isConnected) throw new Error('STALE_ELEMENT_REF');
+            } else if (selector) {
               target = document.querySelector(selector);
             } else if (Number.isFinite(x) && Number.isFinite(y)) {
               target = document.elementFromPoint(x, y);
@@ -450,8 +549,39 @@ internal object BrowserDomScripts {
         """.trimIndent()
     }
 
-    fun click(selector: String?, x: Int?, y: Int?): String =
-        targeted(selector, x, y) +
+    fun observe(documentEpoch: Long): String =
+        """
+        var selector = 'a[href],button,input:not([type="hidden"]),textarea,select,summary,' +
+          '[role="button"],[role="link"],[role="checkbox"],[role="radio"],[role="combobox"],' +
+          '[role="textbox"],[contenteditable="true"],[tabindex]';
+        var matches = document.querySelectorAll(selector);
+        var referenced = [];
+        var scanned = 0;
+        var deadline = Date.now() + 600;
+        for (var index = 0; index < matches.length && index < 5000 &&
+             referenced.length < MAX_OBSERVED_ELEMENTS && Date.now() <= deadline; index++) {
+          scanned++;
+          var element = matches[index];
+          if (!visible(element) || referenced.includes(element)) continue;
+          referenced.push(element);
+        }
+        var installed = installObservationRefs(referenced, $documentEpoch);
+        var elements = referenced.map(function(element, index) {
+          return semanticDescribe(element, installed.labels[index], deadline);
+        });
+        return {
+          document_epoch: $documentEpoch,
+          observation_id: installed.generation,
+          element_count: elements.length,
+          scanned_elements: scanned,
+          truncated: scanned < matches.length,
+          refs_invalidated_by: ['observe','navigation','reset','document_replacement'],
+          elements: elements
+        };
+        """.trimIndent()
+
+    fun click(selector: String?, ref: String?, x: Int?, y: Int?, documentEpoch: Long): String =
+        targeted(selector, ref, x, y, documentEpoch) +
             """
             target.scrollIntoView({ block: 'center', inline: 'center' });
             var rect = target.getBoundingClientRect();
@@ -464,8 +594,16 @@ internal object BrowserDomScripts {
             return { matched_element: describe(target) };
             """.trimIndent()
 
-    fun type(selector: String?, x: Int?, y: Int?, text: String, submit: Boolean): String =
-        targeted(selector, x, y) +
+    fun type(
+        selector: String?,
+        ref: String?,
+        x: Int?,
+        y: Int?,
+        text: String,
+        submit: Boolean,
+        documentEpoch: Long,
+    ): String =
+        targeted(selector, ref, x, y, documentEpoch) +
             """
             if (!editable(target)) throw new Error('TARGET_NOT_EDITABLE');
             target.scrollIntoView({ block: 'center', inline: 'center' });
@@ -487,6 +625,128 @@ internal object BrowserDomScripts {
               else target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
             }
             return { matched_element: describe(target), typed_chars: value.length, submitted: $submit };
+            """.trimIndent()
+
+    fun hover(selector: String?, ref: String?, x: Int?, y: Int?, documentEpoch: Long): String =
+        targeted(selector, ref, x, y, documentEpoch) +
+            """
+            if (!visible(target)) throw new Error('TARGET_NOT_VISIBLE');
+            target.scrollIntoView({ block: 'center', inline: 'center' });
+            var rect = target.getBoundingClientRect();
+            var cx = rect.left + rect.width / 2;
+            var cy = rect.top + rect.height / 2;
+            if (window.PointerEvent) {
+              ['pointerover','pointerenter','pointermove'].forEach(function(kind) {
+                target.dispatchEvent(new PointerEvent(kind, {
+                  bubbles: kind !== 'pointerenter', cancelable: true,
+                  clientX: cx, clientY: cy, pointerType: 'mouse'
+                }));
+              });
+            }
+            ['mouseover','mouseenter','mousemove'].forEach(function(kind) {
+              target.dispatchEvent(new MouseEvent(kind, {
+                bubbles: kind !== 'mouseenter', cancelable: true, clientX: cx, clientY: cy
+              }));
+            });
+            return { matched_element: describe(target), strategy: 'synthetic_pointer_events' };
+            """.trimIndent()
+
+    fun select(
+        selector: String?,
+        ref: String?,
+        x: Int?,
+        y: Int?,
+        values: List<String>,
+        documentEpoch: Long,
+    ): String =
+        targeted(selector, ref, x, y, documentEpoch) +
+            """
+            if (!(target instanceof HTMLSelectElement)) throw new Error('TARGET_NOT_SELECT');
+            if (!enabled(target)) throw new Error('TARGET_DISABLED');
+            var requested = ${org.json.JSONArray(values)};
+            if (!target.multiple && requested.length > 1) throw new Error('TARGET_NOT_MULTI_SELECT');
+            var options = Array.from(target.options);
+            var available = new Set(options.map(function(option) { return String(option.value); }));
+            if (requested.some(function(value) { return !available.has(String(value)); })) {
+              throw new Error('SELECT_VALUE_NOT_FOUND');
+            }
+            var found = new Set();
+            options.forEach(function(option) {
+              var selected = requested.includes(String(option.value));
+              option.selected = selected;
+              if (selected) found.add(String(option.value));
+            });
+            target.dispatchEvent(new Event('input', { bubbles: true }));
+            target.dispatchEvent(new Event('change', { bubbles: true }));
+            return {
+              matched_element: describe(target),
+              selected_values: Array.from(found),
+              multiple: !!target.multiple
+            };
+            """.trimIndent()
+
+    fun press(
+        selector: String?,
+        ref: String?,
+        x: Int?,
+        y: Int?,
+        key: String,
+        documentEpoch: Long,
+    ): String =
+        targetedOptional(selector, ref, x, y, documentEpoch) +
+            """
+            target = target || document.activeElement || document.body;
+            if (!target) throw new Error('TARGET_NOT_FOUND');
+            if (target.focus) target.focus();
+            var spec = ${JSONObject.quote(key)};
+            var ctrl = spec === 'Ctrl+A';
+            var shift = spec === 'Shift+Tab';
+            var keyName = ctrl ? 'a' : (shift ? 'Tab' : spec);
+            var eventKey = keyName === 'Space' ? ' ' : keyName;
+            var options = {
+              key: eventKey, code: keyName === 'Space' ? 'Space' : keyName,
+              bubbles: true, cancelable: true, ctrlKey: ctrl, shiftKey: shift
+            };
+            var accepted = target.dispatchEvent(new KeyboardEvent('keydown', options));
+            var strategy = 'synthetic_key_events';
+            if (accepted && ctrl && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) {
+              target.setSelectionRange(0, String(target.value || '').length);
+              strategy = 'select_all';
+            } else if (accepted && ctrl && target.isContentEditable) {
+              var selection = window.getSelection();
+              var range = document.createRange();
+              range.selectNodeContents(target);
+              selection.removeAllRanges();
+              selection.addRange(range);
+              strategy = 'select_all';
+            } else if (accepted && keyName === 'Tab') {
+              var focusable = Array.from(document.querySelectorAll(
+                'a[href],button,input,textarea,select,[contenteditable="true"],[tabindex]'
+              )).filter(function(item) { return enabled(item) && Number(item.tabIndex) >= 0; });
+              var current = focusable.indexOf(target);
+              var delta = shift ? -1 : 1;
+              var next = focusable.length ?
+                (current < 0 ? (shift ? focusable.length - 1 : 0) :
+                  (current + delta + focusable.length) % focusable.length) : -1;
+              if (next >= 0) focusable[next].focus();
+              strategy = 'focus_traversal';
+            } else if (accepted && keyName === 'Enter') {
+              var form = target.form || (target.closest ? target.closest('form') : null);
+              if (target instanceof HTMLInputElement && form && form.requestSubmit) form.requestSubmit();
+              else if (target.click && (inferredRole(target) === 'button' || inferredRole(target) === 'link')) target.click();
+              strategy = 'enter_activation';
+            } else if (accepted && keyName === 'Space' && target.click &&
+                       ['button','checkbox','radio'].includes(inferredRole(target))) {
+              target.click();
+              strategy = 'space_activation';
+            }
+            target.dispatchEvent(new KeyboardEvent('keyup', options));
+            return {
+              matched_element: describe(target),
+              focused_element: document.activeElement instanceof Element ? describe(document.activeElement) : null,
+              key: spec,
+              strategy: strategy
+            };
             """.trimIndent()
 
     fun scroll(selector: String?, direction: String, amount: Int): String {
@@ -522,6 +782,56 @@ internal object BrowserDomScripts {
         };
         """.trimIndent()
 
+    fun highlightHelpTarget(selector: String): String =
+        """
+        var previous = window[HELP_TARGET_KEY];
+        if (previous && previous.element && previous.element.isConnected) {
+          previous.element.style.setProperty('outline', previous.outline, previous.outlinePriority);
+          previous.element.style.setProperty('outline-offset', previous.offset, previous.offsetPriority);
+        }
+        var target = document.querySelector(${JSONObject.quote(selector)});
+        if (!target || !visible(target)) throw new Error('TARGET_NOT_VISIBLE');
+        window[HELP_TARGET_KEY] = {
+          element: target,
+          outline: target.style.getPropertyValue('outline'),
+          outlinePriority: target.style.getPropertyPriority('outline'),
+          offset: target.style.getPropertyValue('outline-offset'),
+          offsetPriority: target.style.getPropertyPriority('outline-offset')
+        };
+        target.style.setProperty('outline', '3px solid #ff9800', 'important');
+        target.style.setProperty('outline-offset', '3px', 'important');
+        target.scrollIntoView({ block: 'center', inline: 'center' });
+        return { resolved_target: true, matched_element: describe(target) };
+        """.trimIndent()
+
+    fun clearHelpTarget(): String =
+        """
+        var previous = window[HELP_TARGET_KEY];
+        if (previous && previous.element && previous.element.isConnected) {
+          previous.element.style.setProperty('outline', previous.outline, previous.outlinePriority);
+          previous.element.style.setProperty('outline-offset', previous.offset, previous.offsetPriority);
+        }
+        delete window[HELP_TARGET_KEY];
+        return { cleared: true };
+        """.trimIndent()
+
+    fun completionState(urlContains: String?, selectorExists: String?, match: String): String {
+        val urlLiteral = urlContains?.let(JSONObject::quote) ?: "null"
+        val selectorLiteral = selectorExists?.let(JSONObject::quote) ?: "null"
+        return """
+        var urlContains = $urlLiteral;
+        var selectorExists = $selectorLiteral;
+        var signals = [];
+        if (urlContains) signals.push(String(window.location.href || '').includes(urlContains));
+        if (selectorExists) signals.push(!!document.querySelector(selectorExists));
+        return {
+          matched: signals.length > 0 && ${if (match == "all") "signals.every(Boolean)" else "signals.some(Boolean)"},
+          url_matched: urlContains ? signals[0] : null,
+          selector_matched: selectorExists ? signals[signals.length - 1] : null
+        };
+        """.trimIndent()
+    }
+
     fun selectorState(selector: String): String =
         """
         var matches = document.querySelectorAll(${JSONObject.quote(selector)});
@@ -532,10 +842,31 @@ internal object BrowserDomScripts {
         return { found: !!target, visible: !!target, enabled: target ? enabled(target) : false };
         """.trimIndent()
 
-    private fun targeted(selector: String?, x: Int?, y: Int?): String {
+    private fun targeted(
+        selector: String?,
+        ref: String?,
+        x: Int?,
+        y: Int?,
+        documentEpoch: Long,
+    ): String = targetedOptional(selector, ref, x, y, documentEpoch) +
+        "if (!target) throw new Error('TARGET_NOT_FOUND');\n"
+
+    private fun targetedOptional(
+        selector: String?,
+        ref: String?,
+        x: Int?,
+        y: Int?,
+        documentEpoch: Long,
+    ): String {
         val selectorLiteral = selector?.let(JSONObject::quote) ?: "null"
+        val refLiteral = ref?.let(JSONObject::quote) ?: "null"
         val xLiteral = x?.toString() ?: "null"
         val yLiteral = y?.toString() ?: "null"
-        return "var target = resolveTarget($selectorLiteral, $xLiteral, $yLiteral);\n"
+        val hasTarget = selector != null || ref != null || x != null || y != null
+        return if (hasTarget) {
+            "var target = resolveTarget($selectorLiteral, $refLiteral, $xLiteral, $yLiteral, $documentEpoch);\n"
+        } else {
+            "var target = null;\n"
+        }
     }
 }

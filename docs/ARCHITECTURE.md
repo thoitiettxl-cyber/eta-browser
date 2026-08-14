@@ -4,7 +4,7 @@
 
 This repository owns the standalone Eta Browser Android app, its loopback protocol, production CLI, Pi adapter, companion skill, tests, and release documentation.
 
-The Eta repository separately owns Eta's internal `browser_use` implementation. The implementations intentionally remain independent because sharing an Android library across repositories would add release coupling and a remote dependency to Eta. Compatibility is maintained through the same 13-action vocabulary, protocol/argument tests, payload limits, and installed-device parity checks.
+The Eta repository separately owns Eta's internal `browser_use` implementation. The implementations intentionally remain independent because sharing an Android library across repositories would add release coupling and a remote dependency to Eta. Compatibility is maintained through the original 13-action core, protocol/argument tests, payload limits, and installed-device parity checks. Eta Browser also owns seven additive standalone actions accepted in [`decisions/0001-bounded-browser-agent-extensions.md`](decisions/0001-bounded-browser-agent-extensions.md); those extensions do not change protocol version 2 or Eta's internal catalog.
 
 ## Android app
 
@@ -25,6 +25,20 @@ Request frames retain at most 64 KiB. Oversized frames are bounded-drained towar
 Only one lease may own the browser. Execute and reset require matching `client_id` and `lease_id`. One operation may be active. Stop additionally requires the exact active request ID. Released leases remain stale, and reset is non-cancellable.
 
 The Android UI can attach to the same WebView. While user takeover is active, external browser actions fail with `USER_CONTROL_ACTIVE`.
+
+`request_help` is one cancellable active browser operation. It retains the authenticated lease, marks the shared WebView as user-controlled without cancelling itself, presents a generic notification plus an in-app prompt, and waits for explicit Done/Cancel, timeout, or bounded URL/selector completion criteria. Other browser operations cannot interleave. Exact `browser.stop`, bridge shutdown, revoke, and normal cancellation interrupt the wait and clear handoff UI state.
+
+## Semantic observation and refs
+
+`observe` injects a bounded semantic DOM traversal and returns at most 32 visible controls with role, accessible name, safe state, bounds, selector fallback, and opaque `@eN` refs. Form values are never returned. Only the latest observation's document-local ref table exists. A later observation replaces it; navigation, reset, document replacement, or a disconnected node causes ref targeting to fail with `STALE_ELEMENT_REF`.
+
+`click`, `type`, `hover`, and `select` accept one selector, ref, or coordinate pair. `press` may target one of those or the active element. `hover` and key delivery use bounded synthetic WebView events rather than CDP and therefore require installed-device acceptance for target sites.
+
+## Diagnostics
+
+Console and network diagnostics are synchronized in-memory rings capped at 200 entries. Cursor reads return at most 100 items and remain subject to the normal approximately 12 KiB text envelope.
+
+Console messages are consumed by `WebChromeClient` and are not printed to app logs. Network events use normal `WebViewClient` request/error callbacks, strip URL user-info/query/fragment, and never capture headers, bodies, cookies, authorization data, interception payloads, or timings. Android WebView does not expose complete successful response metadata through this boundary, so `network` explicitly reports incomplete callback-based coverage rather than a DevTools-equivalent trace. Reset clears both rings.
 
 ## Payloads
 

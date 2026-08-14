@@ -5,6 +5,6 @@
   "error": {
     "category": "usage",
     "code": "TARGET_REQUIRED",
-    "message": "click requires --selector or both coordinates"
+    "message": "click requires --selector, --ref, or both coordinates"
   }
 }

@@ -25,6 +25,8 @@ jobs:
             task: ":app:assembleDebug"
           - name: Lint Android app
             task: ":app:lintDebug"
+          - name: Test Android app
+            task: ":app:testDebugUnitTest"
 
     steps:
       - name: Check out repository
@@ -84,6 +86,11 @@ jobs:
 
       - name: Check Android identity
         run: scripts/check-package-identity.sh
+
+      - name: Check browser action contract
+        run: |
+          node scripts/check-browser-action-contract.mjs
+          node --test scripts/check-browser-action-contract.test.mjs
 
       - name: Validate production CLI
         run: |

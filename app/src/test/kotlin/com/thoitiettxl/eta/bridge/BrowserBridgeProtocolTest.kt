@@ -22,6 +22,7 @@ class BrowserBridgeProtocolTest {
 
         assertEquals(2, health.getInt("protocol"))
         assertFalse(health.getBoolean("session_leased"))
+        assertFalse(health.getBoolean("human_handoff_pending"))
     }
 
     @Test
