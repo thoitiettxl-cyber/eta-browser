@@ -10,3 +10,4 @@ need. Ordinary bounded changes should rely on Git and pull-request history.
 ## Plans
 
 - [`story-6-runtime-proof.md`](story-6-runtime-proof.md): standalone extraction runtime proof and clean-install acceptance.
+- [`browser-agent-handoff-observation.md`](browser-agent-handoff-observation.md): bounded browser-agent extensions with Android CI and installed-device acceptance.

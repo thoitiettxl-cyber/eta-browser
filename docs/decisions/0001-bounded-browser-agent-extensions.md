@@ -58,6 +58,6 @@ Tradeoffs:
 
 ## Follow-Up
 
-- Implement and validate the accepted contract under `docs/plans/active/browser-agent-handoff-observation.md`.
+- Implementation and validation evidence is recorded under `docs/plans/completed/browser-agent-handoff-observation.md`.
 - Keep Android build/lint/unit-test authority in GitHub Actions and require CI-built installed-device acceptance before completion.
 - Revisit protocol versioning only if a future change becomes incompatible rather than additive.

@@ -4,7 +4,7 @@ Date: 2026-08-14
 
 ## Status
 
-Active
+Completed
 
 ## Outcome
 
@@ -75,8 +75,8 @@ Out of scope:
 - [x] Implemented cancellable human handoff UI/notification/completion behavior with focused tests.
 - [x] Implemented bounded console/network diagnostics with positive and negative security proof.
 - [x] Extended CLI and Pi adapter commands, schemas, tests, and help.
-- [x] Ran all available local validation and reviewed the final diff; authoritative Android CI and installed runtime evidence remain pending.
-- [ ] Obtain authoritative Android CI and installed-APK runtime evidence.
+- [x] Ran all available local validation and reviewed the final diff.
+- [x] Obtained authoritative Android CI and installed-APK runtime evidence, including a focused replacement-build re-test for the runtime-found reset stale-ref fix.
 
 ## Decisions
 
@@ -120,6 +120,26 @@ Local evidence collected in the Alpine chroot:
 
 This manual Android 36 compile is supplemental only. The repository requires SDK 37 Gradle build/lint/unit-test evidence from GitHub Actions and installed-device acceptance from that CI-built APK.
 
+Authoritative CI and artifact evidence:
+
+- implementation commit `06f7b117ce24921c0125f7284e1a4bc5aba5c32f` passed GitHub Actions run [`31779695549`](https://github.com/thoitiettxl-cyber/eta-browser/actions/runs/31779695549), including Node validation and Android SDK 37 `:app:assembleDebug`, `:app:lintDebug`, and `:app:testDebugUnitTest`;
+- runtime acceptance found that an old ref after reset failed closed with `NO_PAGE` rather than the documented `STALE_ELEMENT_REF`;
+- focused fix commit `a1068493778b324349c636075bbff68b9629f342` passed replacement run [`31782945246`](https://github.com/thoitiettxl-cyber/eta-browser/actions/runs/31782945246) with the same Node and Android build/lint/unit-test matrix;
+- final artifact `9212399087` was 4,392,631 bytes with SHA-256 `b3b65200a406fe2a684a74689d700b361462740842bb0b157dcbc3b0f43eee3b`, was installed by the user, and preserved pairing sufficiently to re-enable the bridge.
+
+Installed-device evidence used only the repository-owned loopback fixture:
+
+- semantic observation omitted input, select, password, and contenteditable values while returning safe labels, roles, state, bounds, and refs;
+- latest-observation refs supported click/type and failed with `STALE_ELEMENT_REF` after re-observation, navigation, disconnected-node replacement, and—on the final replacement APK—reset;
+- `select`, synthetic `hover`, `Ctrl+A`, `Tab`, and `Enter` produced the documented strategies and fixture outcomes;
+- bounded console/network reads preserved cursors, redacted URL query data, reported no headers/bodies or complete response trace, and reset cleared both buffers;
+- `request_help` returned user-driven `continued`, `cancelled`, criteria-driven `completed`, `timed_out`, and exact SIGINT interruption outcomes; all paths cleared handoff, user-control, notification/action, and lease state;
+- the notification was user-confirmed generic while detailed title/prompt remained in-app, and the entered fixture value plus detailed prompt were absent from action, health, console, and network outputs;
+- ordinary manual takeover blocked automation with `USER_CONTROL_ACTIVE` and recovered after user exit;
+- screenshot regression passed non-empty bounded JPEG capture in both `software_view_draw` before visible attachment and `detached_picture` after visible attachment/detachment; the final APK also retained a non-empty `detached_picture` capture and clean handoff timeout recovery.
+
+Observed limitations match the accepted contract: hover and key behavior use synthetic WebView events rather than CDP-native input, and network diagnostics are callback-based request/error evidence rather than a complete response trace.
+
 ## Result
 
-Complete after implementation, authoritative Android CI, and installed-device acceptance. Record observed limits—especially WebView hover/key fidelity and callback-based network coverage—before moving this plan to `docs/plans/completed/`.
+Completed. Eta Browser now provides the approved bounded observation, ref targeting, interaction, human-handoff, and diagnostic extensions without changing protocol version 2 or weakening loopback authentication, lease ownership, exact cancellation, payload limits, shared-WebView ownership, or the permissive-not-a-sandbox boundary. Local checks, two authoritative Android CI runs, the exact final CI artifact, user-visible handoff confirmation, and installed-device acceptance are recorded above.
