@@ -265,7 +265,7 @@ internal object BrowserSessionEngine {
             attachedContainer?.takeIf { it !== container }?.removeAllViews()
             attachedContainer = container
             contextWrapper?.baseContext = hostContext
-            ensureWebView().let {
+            webView?.let {
                 attachWebViewOnMain(it, container)
                 updateUserInteractionOnMain(it)
             }
@@ -836,10 +836,11 @@ internal object BrowserSessionEngine {
         return JSONObject().put("value", value)
     }
 
-    @Suppress("DEPRECATION")
     private fun captureViewport(view: WebView): CapturedImage = callOnMain {
         layoutOffscreenOnMain(view)
-        val picture = if (view.isAttachedToWindow) null else view.capturePicture()
+        val detached = view.windowToken == null
+        // Preserve Eta's source capture path: a detached WebView draws through software.
+        if (detached) view.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
         val sourceWidth = view.width.coerceAtLeast(1)
         val sourceHeight = view.height.coerceAtLeast(1)
         val scale = minOf(
@@ -853,12 +854,7 @@ internal object BrowserSessionEngine {
         Canvas(bitmap).also { canvas ->
             canvas.drawColor(Color.WHITE)
             canvas.scale(scale, scale)
-            if (picture != null) {
-                canvas.translate(-view.scrollX.toFloat(), -view.scrollY.toFloat())
-                picture.draw(canvas)
-            } else {
-                view.draw(canvas)
-            }
+            view.draw(canvas)
         }
         val bytes = ByteArrayOutputStream().use { stream ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, SCREENSHOT_QUALITY, stream)
@@ -868,7 +864,7 @@ internal object BrowserSessionEngine {
             bytes = bytes,
             width = bitmap.width,
             height = bitmap.height,
-            mode = if (picture == null) "view_draw" else "detached_picture",
+            mode = if (detached) "software_view_draw" else "view_draw",
         )
         bitmap.recycle()
         captured

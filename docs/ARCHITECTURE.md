@@ -10,7 +10,7 @@ The Eta repository separately owns Eta's internal `browser_use` implementation. 
 
 The `app` module uses application ID and namespace `com.thoitiettxl.eta`. It owns a serialized singleton `BrowserSessionEngine`, user takeover activities, persistent pairing state, and the foreground loopback bridge.
 
-MainActivity keeps the shared WebView attached behind a `0.999`-alpha white control layer. The layer is visually opaque to the user but prevents Android from culling the WebView's rendering surface, allowing the first external screenshot to use `view_draw` without opening BrowserActivity. BrowserActivity can later move the same WebView into its visible container and detaches it again on exit.
+The shared WebView normally remains detached from an Activity, matching Eta's source lifecycle. Detached screenshots switch that WebView to a software layer and call `view.draw` into a bounded bitmap; BrowserActivity temporarily attaches the same instance for observation or user takeover and detaches it again on exit.
 
 The WebView profile preserves the source Eta behavior. It is permissive by design and must not be described as a sandbox.
 

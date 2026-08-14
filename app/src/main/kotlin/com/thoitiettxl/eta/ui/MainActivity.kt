@@ -6,7 +6,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
@@ -15,7 +14,6 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -29,7 +27,6 @@ class MainActivity : Activity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var pairingStore: BrowserPairingStore
     private lateinit var pairingTokenInput: EditText
-    private lateinit var browserWarmupContainer: FrameLayout
     private lateinit var status: TextView
     private lateinit var credentials: TextView
     private lateinit var clients: TextView
@@ -46,10 +43,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         pairingStore = BrowserPairingStore(this)
         BrowserBridgeRuntime.syncPairing(pairingStore.token())
-        BrowserSessionEngine.initialize(applicationContext)
         setContentView(buildContent())
-        BrowserSessionEngine.setUserControlActive(false)
-        BrowserSessionEngine.attachTo(browserWarmupContainer, this)
         requestNotificationPermissionIfNeeded()
     }
 
@@ -64,12 +58,7 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
-    override fun onDestroy() {
-        BrowserSessionEngine.detachFrom(browserWarmupContainer)
-        super.onDestroy()
-    }
-
-    private fun buildContent(): FrameLayout {
+    private fun buildContent(): ScrollView {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -149,9 +138,7 @@ class MainActivity : Activity() {
         }
         content.addView(pageState, matchWidth())
 
-        val controls = ScrollView(this).apply {
-            setBackgroundColor(Color.WHITE)
-            alpha = 0.999f
+        return ScrollView(this).apply {
             addView(
                 content,
                 ViewGroup.LayoutParams(
@@ -159,13 +146,6 @@ class MainActivity : Activity() {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 )
             )
-        }
-        browserWarmupContainer = FrameLayout(this)
-        return FrameLayout(this).apply {
-            addView(browserWarmupContainer, matchScreen())
-            // A nearly opaque control layer keeps the browser visually hidden without
-            // allowing Android to cull its rendering surface from composition.
-            addView(controls, matchScreen())
         }
     }
 
@@ -271,12 +251,6 @@ class MainActivity : Activity() {
         ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
-        )
-
-    private fun matchScreen(): ViewGroup.LayoutParams =
-        ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
         )
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
