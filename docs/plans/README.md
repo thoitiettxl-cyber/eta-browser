@@ -30,9 +30,10 @@ decision into `docs/decisions/`; keep task-local choices in the plan.
 
 ## Active Plans
 
-- [`active/v1.0.0-branding-signing-release.md`](active/v1.0.0-branding-signing-release.md): launcher branding, durable Android signing, signed release candidate, device acceptance, and gated v1.0.0 publication.
+- None.
 
 ## Completed Plans
 
+- [`completed/v1.0.0-branding-signing-release.md`](completed/v1.0.0-branding-signing-release.md): launcher branding, durable Android signing, exact signed candidate, installed-device acceptance, and GitHub Release v1.0.0.
 - [`completed/story-6-runtime-proof.md`](completed/story-6-runtime-proof.md): clean-install and device acceptance for the standalone extraction.
 - [`completed/browser-agent-handoff-observation.md`](completed/browser-agent-handoff-observation.md): bounded semantic observation, explicit human handoff, interaction extensions, diagnostics, Android CI, and installed-device acceptance.
