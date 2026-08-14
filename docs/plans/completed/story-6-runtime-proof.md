@@ -4,7 +4,7 @@ Date: 2026-08-14
 
 ## Status
 
-Active
+Completed
 
 ## Outcome
 
@@ -58,7 +58,7 @@ Out of scope:
 - Debug APKs built on separate CI runners may require uninstall/reinstall because signing identity may differ. Revoke pairing before uninstall and expect a new pairing afterward.
 - The retired package can retain fixed port `18765`. Keep `fuck.andes.browser` uninstalled and verify the listener disappears after revoke/disable.
 - A credential pasted into a transcript is compromised even for debug use. Rotate it immediately without printing the replacement, and revoke at the end.
-- Harness installation currently exists as an uncommitted diff. The backup of the pre-Harness `AGENTS.md` is under `.harness-backup/20260814040342/AGENTS.md`; do not delete it until the Harness diff is accepted or committed.
+- Harness core `0.1.10` was committed in `9f37303`; the temporary pre-Harness backup was removed after Git history provided the recovery path.
 
 ## Progress
 
@@ -72,9 +72,9 @@ Out of scope:
 - [x] Installed repository Harness core `0.1.10` in merge mode; `harness doctor` passes.
 - [x] Tested candidate `a0fcfc1`, CI run `31768362887`, artifact `9207186491`, SHA-256 `f5ef51fadd5c84052378f364a4ea6e6533c7373d2bc7eda58b1eefad1418419c`; clean-install navigation and DOM extraction succeeded, but the first and later `view_draw` screenshots were visually blank at 1101 by 2400 pixels and 16,282 bytes.
 - [x] Clean-install tested successor code commit `084442e` from pushed HEAD `9f37303`; CI run `31770124364` and the fresh first screenshot passed, but post-takeover detached capture failed. Artifact `9207809936` is 4,329,423 bytes with SHA-256 `d0c325a4f10373a5d9a20248a52da8878db0bfdcc4a4e9c80256148b974ba49b`.
-- [ ] Revise and retest post-takeover detached capture: the fresh first screenshot passed with `software_view_draw`, but the same mode returned a blank 1272 by 2183 image after BrowserActivity had visibly attached and detached the committed page.
-- [ ] Complete remaining runtime acceptance and final credential revocation.
-- [ ] Record final evidence, complete this plan, commit/push Harness and final changes, and confirm both worktrees are clean.
+- [x] Revised and retested post-takeover detached capture in `30b4a80`; CI run `31770922488` passed and clean-install runtime proof accepted both capture lifecycle states.
+- [x] Completed remaining runtime acceptance and final credential revocation on the `30b4a80` APK.
+- [x] Recorded final evidence, completed this plan, committed/pushed Harness and product changes, and confirmed both worktrees were clean before the final evidence commit.
 
 ## Decisions
 
@@ -89,7 +89,7 @@ Out of scope:
 
 ## Validation
 
-Successor working-tree proof after restoring Eta's detached capture path:
+Repository proof on final code commit `30b4a80`:
 
 - `scripts/check-package-identity.sh`
 - `npm --prefix tools/eta-browser-cli run check`
@@ -103,7 +103,7 @@ Previously passed unaffected proof:
 - isolated `scripts/install-pi.sh` smoke test
 - `scripts/bin/harness doctor`
 
-Android build/lint and installed-device proof remain pending for a committed CI candidate.
+Android build/lint and installed-device proof passed for the final candidate.
 
 CI evidence:
 
@@ -117,17 +117,17 @@ CI evidence:
 - Successor HEAD `9f37303` passed the clean-install first-screenshot gate: Pi returned a visually non-blank 1272 by 2400 image, and CLI confirmed `capture_mode=software_view_draw` with a 130,164-byte JPEG before BrowserActivity opened.
 - The same installed candidate passed Pi/CLI readable output, CLI selector discovery, typing, clicking, screenshots, exact-request SIGINT cancellation with exit 130 and idle recovery, reset page/cookie/history clearing, loopback-only binding, `USER_CONTROL_ACTIVE`, and automation recovery after takeover.
 - Post-takeover detached screenshot then failed visually: `software_view_draw` returned an all-white 1272 by 2183 JPEG of 17,197 bytes despite a visible committed DOM.
+- Final candidate `30b4a80` run `31770922488` passed Android build, Android lint, and CLI/Pi validation; artifact `9208098580` was 4,329,827 bytes with SHA-256 `2f95fc5c4ce0d80384cddb33858c396f93d3d48e3589b226203a741f22c6d699`.
+- On a clean install of that artifact, the first screenshot before BrowserActivity was visually non-blank and reported `software_view_draw`, 1272 by 2400 pixels, and 130,091 bytes.
+- `USER_CONTROL_ACTIVE` blocked automation during takeover; automation recovered after exit, and the first detached screenshot after visible attachment was visually non-blank and reported `detached_picture`, 1272 by 2183 pixels, and 127,548 bytes.
+- Exact-cancellation retest on the final APK returned exit 130 with category `interrupted` and code `INTERRUPTED`; follow-up health had no lease or active request.
+- Reset retest on the final APK removed a non-sensitive `story6` cookie, cleared page/history, made browser availability false, and reset capture lifecycle; the post-reset screenshot was visually non-blank `software_view_draw`, 1272 by 2400 pixels, and 98,643 bytes.
+- The listener was observed only on IPv4-mapped loopback `::ffff:127.0.0.1:18765`; disabling and final credential revocation removed it. Final local config retained mode `0600` with no token.
+- Android App info confirmed version `1.0.0`; the running process identity was `com.thoitiettxl.eta`, the retired process was absent, and the user confirmed the retired app was not installed.
+- The GitHub Releases API returned zero releases.
 
-Remaining integration/end-to-end proof:
-
-- Clean-install first screenshot before BrowserActivity, visually non-blank.
-- Pi screenshot consumption on the accepted candidate.
-- `USER_CONTROL_ACTIVE` while takeover is enabled and recovery after exit.
-- Signal cancellation with exact request identity and idle follow-up health.
-- Reset clears page/cookies/history and leaves the bridge healthy.
-- Listener remains fixed and loopback-only, then disappears after disable/revoke.
-- Android app info confirms `com.thoitiettxl.eta` version `1.0.0` and retired package absence.
+Installed-APK acceptance is complete. Pairing credentials were never added to repository files or printed in acceptance summaries, and the final credential was revoked.
 
 ## Result
 
-HEAD `9f37303` passed the clean-install first-screenshot gate and the remaining automated recovery/security checks, but failed post-takeover detached screenshot acceptance. A narrow lifecycle fallback candidate is pending. No release has been created.
+Story 6 is complete on final code commit `30b4a80`. The standalone repository and Eta cleanup are pushed, CI passes, clean-install CLI/Pi and two-state screenshot behavior are accepted on the CI-built APK, package migration and recovery/security gates pass, and the final credential is revoked. No release or package publication was created.

@@ -30,4 +30,8 @@ decision into `docs/decisions/`; keep task-local choices in the plan.
 
 ## Active Plans
 
-- [`active/story-6-runtime-proof.md`](active/story-6-runtime-proof.md): complete clean-install and device acceptance for the standalone extraction.
+- None.
+
+## Completed Plans
+
+- [`completed/story-6-runtime-proof.md`](completed/story-6-runtime-proof.md): clean-install and device acceptance for the standalone extraction.
