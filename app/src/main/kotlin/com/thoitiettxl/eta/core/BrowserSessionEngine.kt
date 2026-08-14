@@ -499,8 +499,8 @@ internal object BrowserSessionEngine {
     }
 
     private fun click(args: JSONObject): BrowserToolResult {
-        val view = requirePage()
         val target = targetFrom(args)
+        val view = requirePage(refTargeted = target.ref != null)
         val value = evaluateObject(
             view,
             BrowserDomScripts.click(
@@ -524,8 +524,8 @@ internal object BrowserSessionEngine {
         }
         val inputText = args.optString("text")
         val submit = args.optBoolean("submit", false)
-        val view = requirePage()
         val target = targetFrom(args)
+        val view = requirePage(refTargeted = target.ref != null)
         val value = evaluateObject(
             view,
             BrowserDomScripts.type(
@@ -546,8 +546,8 @@ internal object BrowserSessionEngine {
     }
 
     private fun hover(args: JSONObject): BrowserToolResult {
-        val view = requirePage()
         val target = targetFrom(args)
+        val view = requirePage(refTargeted = target.ref != null)
         val value = evaluateObject(
             view,
             BrowserDomScripts.hover(
@@ -566,8 +566,8 @@ internal object BrowserSessionEngine {
     }
 
     private fun select(args: JSONObject): BrowserToolResult {
-        val view = requirePage()
         val target = targetFrom(args)
+        val view = requirePage(refTargeted = target.ref != null)
         val value = evaluateObject(
             view,
             BrowserDomScripts.select(
@@ -587,8 +587,8 @@ internal object BrowserSessionEngine {
     }
 
     private fun press(args: JSONObject): BrowserToolResult {
-        val view = requirePage()
         val target = optionalTargetFrom(args)
+        val view = requirePage(refTargeted = target?.ref != null)
         val key = BrowserActionContract.pressKey(args)
             ?: throw BrowserSessionFailure("INVALID_ARGUMENT", "press key 无效")
         val value = evaluateObject(
@@ -880,9 +880,15 @@ internal object BrowserSessionEngine {
         return selector
     }
 
-    private fun requirePage(): WebView {
+    private fun requirePage(refTargeted: Boolean = false): WebView {
         val view = ensureWebView()
         if (!snapshots.value.available || currentUrl.isBlank()) {
+            if (refTargeted) {
+                throw BrowserSessionFailure(
+                    "STALE_ELEMENT_REF",
+                    "元素引用已失效，请重新调用 observe",
+                )
+            }
             throw BrowserSessionFailure("NO_PAGE", "当前没有网页，请先调用 navigate")
         }
         throwIfInterrupted()
