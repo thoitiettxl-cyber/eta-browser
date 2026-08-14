@@ -12,7 +12,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -31,7 +30,6 @@ class MainActivity : Activity() {
     private lateinit var pairingStore: BrowserPairingStore
     private lateinit var pairingTokenInput: EditText
     private lateinit var browserWarmupContainer: FrameLayout
-    private lateinit var controls: ScrollView
     private lateinit var status: TextView
     private lateinit var credentials: TextView
     private lateinit var clients: TextView
@@ -52,7 +50,6 @@ class MainActivity : Activity() {
         setContentView(buildContent())
         BrowserSessionEngine.setUserControlActive(false)
         BrowserSessionEngine.attachTo(browserWarmupContainer, this)
-        finishBrowserWarmupAfterDraw()
         requestNotificationPermissionIfNeeded()
     }
 
@@ -152,8 +149,9 @@ class MainActivity : Activity() {
         }
         content.addView(pageState, matchWidth())
 
-        controls = ScrollView(this).apply {
+        val controls = ScrollView(this).apply {
             setBackgroundColor(Color.WHITE)
+            alpha = 0.999f
             addView(
                 content,
                 ViewGroup.LayoutParams(
@@ -164,20 +162,10 @@ class MainActivity : Activity() {
         }
         browserWarmupContainer = FrameLayout(this)
         return FrameLayout(this).apply {
-            addView(controls, matchScreen())
-            // The shared WebView starts above the controls as a blank white surface. It is
-            // detached after two frames, before the user can enable external control.
             addView(browserWarmupContainer, matchScreen())
-        }
-    }
-
-    private fun finishBrowserWarmupAfterDraw() {
-        browserWarmupContainer.postOnAnimation {
-            browserWarmupContainer.postOnAnimation {
-                BrowserSessionEngine.detachFrom(browserWarmupContainer)
-                browserWarmupContainer.visibility = View.GONE
-                controls.bringToFront()
-            }
+            // A nearly opaque control layer keeps the browser visually hidden without
+            // allowing Android to cull its rendering surface from composition.
+            addView(controls, matchScreen())
         }
     }
 
