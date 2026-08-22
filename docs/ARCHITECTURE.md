@@ -48,6 +48,6 @@ Text is bounded to approximately 12 KiB. Screenshots are bounded to 1280 by 2400
 
 `tools/eta-browser-cli` owns stable JSON envelope version 1, private credential/session storage, signal-aware exact cancellation, and exit codes `0`, `2`, `3`, `4`, `5`, `130`, and `143`.
 
-`pi/eta-browser-extension` imports the CLI's public transport and config exports. It exposes `eta_browser_use`; pairing and persistent-session administration remain CLI responsibilities.
+`pi/eta-browser-extension` imports the CLI's public transport and config exports. It exposes `eta_browser_use` plus a Pi-level `web_search` composition that uses one lease to navigate DuckDuckGo's branded root SERP, verify the exact search origin before and after extraction, and return bounded organic results through existing actions. Because the root page renders results dynamically, the composition may perform up to four 250 ms same-page extraction probes without reload, repeat navigation, or provider fallback. Provider-specific selectors remain isolated and fail closed with `SEARCH_BLOCKED`; optional snippets are omitted when alignment is ambiguous. `web_search` does not extend the protocol or accepted browser action catalog. Pairing and persistent-session administration remain CLI responsibilities.
 
 `pi/skills/eta-browser-skill-forge` converts an explicitly authorized, verified Eta Browser workflow into one review-only site-specific `SKILL.md`. It uses the same serialized action and human-handoff boundaries and never installs generated skills automatically.

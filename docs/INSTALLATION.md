@@ -50,7 +50,7 @@ Run from the repository root:
 scripts/install-pi.sh
 ```
 
-The installer copies the extension to `~/.pi/agent/extensions/eta-browser`, installs its local CLI package dependency, copies the runtime and Forge skills under `~/.pi/agent/skills/`, and installs the CLI under `~/.local`. Restart Pi, then call `eta_browser_use` with `health`.
+The installer copies the extension, including `eta_browser_use` and `web_search`, to `~/.pi/agent/extensions/eta-browser`, installs its local CLI package dependency, copies the runtime and Forge skills under `~/.pi/agent/skills/`, and installs the CLI under `~/.local`. Restart Pi, then call `eta_browser_use` with `health`. `web_search` uses DuckDuckGo's branded root results page, accepts only the exact HTTPS search origin, leaves the shared WebView on the results page, and returns `SEARCH_BLOCKED` rather than retrying, switching providers, or handling consent and anti-bot challenges automatically.
 
 `eta-browser-skill-forge` creates site-specific skills only in a user-approved review directory. It does not install generated skills automatically.
 

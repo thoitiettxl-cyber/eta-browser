@@ -51,6 +51,12 @@ For the package migration and extraction release, verify:
 
 A release must not be published while required CI or installed-APK acceptance is missing.
 
+## Pi web search acceptance
+
+The Pi-level `web_search` composition does not add an Android, CLI, or protocol action. Run the Pi adapter syntax and fake-bridge tests to prove its bounded input, one-lease conditional workflow, exact DuckDuckGo root-origin checks, bounded same-page dynamic-render settling without a second navigation, conservative organic-result filtering, fail-soft optional snippets, strict query-bound no-results evidence, `SEARCH_BLOCKED` behavior, HTTP 403/429 mapping, cancellation both during an active request and between settle probes, release, and credential/lease secrecy.
+
+Before claiming runtime behavior, use the exact candidate extension with an installed CI-built APK and a non-sensitive DuckDuckGo query. Confirm that the tool returns at most the requested ten organic title/URL entries with only unambiguously aligned optional snippets, opens no result page, and leaves the shared WebView visibly on `https://duckduckgo.com/?q=...`. Do not run live DuckDuckGo searches as a CI gate or deliberately trigger a real CAPTCHA; synthetic fake-bridge fixtures prove deterministic fail-closed behavior, while an incidentally observed consent or anti-bot page must stop without reload, automatic handoff, or provider fallback.
+
 ## Bounded agent-extension acceptance
 
 Use the repository-owned fixture rather than an external account or sensitive page. From the repository root, start one foreground loopback server and stop it with Ctrl-C when acceptance is finished:

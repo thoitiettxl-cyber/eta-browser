@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { TOOL_ACTIONS, executeEtaBrowser } from "./core.mjs";
+import { executeWebSearch } from "./web-search.mjs";
 
 const pressKeys = [
   "Enter",
@@ -56,6 +57,20 @@ const toolSchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, description: "Maximum console entries or network events" })),
 }, { additionalProperties: false });
 
+const webSearchSchema = Type.Object({
+  query: Type.String({
+    minLength: 1,
+    maxLength: 500,
+    description: "Search query sent to DuckDuckGo through the shared Eta Browser WebView",
+  }),
+  max_results: Type.Optional(Type.Integer({
+    minimum: 1,
+    maximum: 10,
+    default: 5,
+    description: "Maximum organic results to return",
+  })),
+}, { additionalProperties: false });
+
 export default function etaBrowserExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "eta_browser_use",
@@ -77,6 +92,27 @@ export default function etaBrowserExtension(pi: ExtensionAPI) {
         return await executeEtaBrowser(params, signal);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Eta Browser request failed";
+        throw new Error(message);
+      }
+    },
+  });
+  pi.registerTool({
+    name: "web_search",
+    label: "Web Search (Eta Browser)",
+    description: "Search DuckDuckGo's branded root results page through the paired, loopback-only Eta Browser and return bounded structured organic results. Uses one workflow of existing protocol-v2 browser actions, enforces exact-origin checks, leaves the shared WebView on the results page, and never opens results, retries blocked searches, or bypasses consent, CAPTCHA, and anti-bot controls.",
+    promptSnippet: "Search DuckDuckGo through Eta Browser for bounded titles, destination URLs, and optional snippets",
+    promptGuidelines: [
+      "Use web_search for result discovery when the paired Eta Browser is available; use eta_browser_use to open and read a selected result.",
+      "web_search leaves the one shared WebView on DuckDuckGo results and invalidates assumptions or refs from the prior page.",
+      "Treat SEARCH_BLOCKED as a wrong-origin, provider-denial, rate-limit, consent, CAPTCHA, anti-bot, or unrecognized-surface boundary; do not reload, repeat, switch providers, or attempt a bypass.",
+      "Results are discovery evidence, not a synthesized answer; open only the sources needed for the user's task.",
+    ],
+    parameters: webSearchSchema,
+    async execute(_toolCallId, params, signal) {
+      try {
+        return await executeWebSearch(params, signal);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Eta Browser web search failed";
         throw new Error(message);
       }
     },

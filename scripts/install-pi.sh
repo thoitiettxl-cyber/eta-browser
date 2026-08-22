@@ -26,6 +26,7 @@ npm install --global --prefix "$LOCAL_PREFIX" --ignore-scripts --no-package-lock
 mkdir -p "$EXTENSION_TARGET" "$SKILL_TARGET" "$FORGE_SKILL_TARGET/assets" "$FORGE_SKILL_TARGET/scripts"
 cp "$EXTENSION_SOURCE/index.ts" "$EXTENSION_TARGET/index.ts"
 cp "$EXTENSION_SOURCE/core.mjs" "$EXTENSION_TARGET/core.mjs"
+cp "$EXTENSION_SOURCE/web-search.mjs" "$EXTENSION_TARGET/web-search.mjs"
 cp "$SKILL_SOURCE/SKILL.md" "$SKILL_TARGET/SKILL.md"
 cp "$FORGE_SKILL_SOURCE/SKILL.md" "$FORGE_SKILL_TARGET/SKILL.md"
 cp "$FORGE_SKILL_SOURCE/assets/site-skill-template.md" "$FORGE_SKILL_TARGET/assets/site-skill-template.md"
@@ -57,4 +58,4 @@ printf '%s\n' "Installed eta-browser CLI under $LOCAL_PREFIX"
 printf '%s\n' "Installed Pi extension at $EXTENSION_TARGET"
 printf '%s\n' "Installed Pi skill at $SKILL_TARGET"
 printf '%s\n' "Installed Pi Forge skill at $FORGE_SKILL_TARGET"
-printf '%s\n' 'Restart Pi before using eta_browser_use.'
+printf '%s\n' 'Restart Pi before using eta_browser_use or web_search.'

@@ -85,6 +85,77 @@ export async function executeEtaBrowser(input, signal, env = process.env) {
   });
 }
 
+export async function executeEtaBrowserWorkflow(
+  operation,
+  signal,
+  env = process.env,
+  options = {},
+) {
+  if (typeof operation !== "function") {
+    throw publicError("INVALID_WORKFLOW", "Eta Browser workflow requires an operation callback");
+  }
+  const maxActions = options.maxActions ?? 16;
+  if (!Number.isInteger(maxActions) || maxActions < 1 || maxActions > 16) {
+    throw publicError("INVALID_WORKFLOW", "Eta Browser workflow allows 1 to 16 actions");
+  }
+  const workflowTimeoutMs = Number.isInteger(options.requestTimeoutMs) ?
+    Math.max(45_000, Math.min(options.requestTimeoutMs, 310_000)) : 60_000;
+  throwIfAborted(signal);
+
+  const { config: stored } = await loadStoredConfig(env);
+  const connection = selectedConnection({
+    flags: new Map(),
+    stored,
+    env,
+    requireToken: true,
+  });
+  const client = new EtaBrowserClient({
+    ...connection,
+    clientId: CLIENT_ID,
+    requestTimeoutMs: workflowTimeoutMs,
+  });
+
+  return withLease(stored, client, async (leaseId) => {
+    let actionCount = 0;
+    let active = true;
+    const execute = async (input) => {
+      if (!active) throw publicError("WORKFLOW_CLOSED", "Eta Browser workflow is already closed");
+      validateInput(input);
+      if (!BROWSER_ACTIONS.includes(input.action)) {
+        throw publicError("INVALID_WORKFLOW_ACTION", "Eta Browser workflow only supports browser actions");
+      }
+      if (requestTimeout(input) > workflowTimeoutMs) {
+        throw publicError(
+          "WORKFLOW_TIMEOUT_TOO_SHORT",
+          "Eta Browser workflow timeout is shorter than the requested action contract",
+        );
+      }
+      if (actionCount >= maxActions) {
+        throw publicError("WORKFLOW_ACTION_LIMIT", "Eta Browser workflow action limit exceeded");
+      }
+      actionCount += 1;
+      throwIfAborted(signal);
+      const requestId = createRequestId();
+      const result = await executeCancellable(
+        client,
+        leaseId,
+        requestId,
+        actionParams(input),
+        signal,
+      );
+      requireBrowserSuccess(result);
+      return input.action === "screenshot" ? screenshotResult(result) :
+        textResult(input.action, result.browser ?? result, browserDetails(result));
+    };
+
+    try {
+      return await operation(execute);
+    } finally {
+      active = false;
+    }
+  });
+}
+
 async function withLease(stored, client, operation) {
   const persistent = storedSession(stored);
   if (persistent) return operation(persistent.leaseId);

@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check index.ts && node --check core.mjs",
-    "test": "node --test core.test.mjs"
+    "check": "node --check index.ts && node --check core.mjs && node --check web-search.mjs",
+    "test": "node --test core.test.mjs web-search.test.mjs"
   },
   "dependencies": {
     "eta-browser-cli": "file:../../tools/eta-browser-cli"

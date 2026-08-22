@@ -1,6 +1,6 @@
 ---
 name: eta-browser
-description: Control the paired standalone Eta Browser with Pi's eta_browser_use custom tool. Use for browser navigation, semantic observation, rendered-page reading, element interaction, explicit human handoff, bounded console/network diagnosis, screenshots, reset, or recovery from bridge, authentication, lease, cancellation, and USER_CONTROL_ACTIVE errors.
+description: Control the paired standalone Eta Browser with Pi's eta_browser_use custom tool and discover DuckDuckGo results with web_search. Use for web search, browser navigation, semantic observation, rendered-page reading, element interaction, explicit human handoff, bounded console/network diagnosis, screenshots, reset, or recovery from bridge, authentication, lease, cancellation, SEARCH_BLOCKED, and USER_CONTROL_ACTIVE errors.
 ---
 
 # Eta Browser
@@ -8,6 +8,14 @@ description: Control the paired standalone Eta Browser with Pi's eta_browser_use
 Use `eta_browser_use` for normal browser operations. Use the shell CLI only for initial pairing, credential repair, explicit persistent-session administration, or a CLI-only diagnostic the Pi tool does not expose.
 
 Eta Browser owns one shared Android WebView, one protocol-v2 lease, and one active operation. Serialize browser calls; never run them in parallel.
+
+## Search discovery
+
+Use `web_search` when the requested outcome is a bounded DuckDuckGo result list. It accepts one query and up to ten results, uses the branded root results page with exact-origin checks, returns titles, destination URLs, and only unambiguously aligned optional snippets, and leaves the shared WebView on the search results page. Use `eta_browser_use` to open and read only the selected sources needed for the task.
+
+The tool may briefly re-observe the same dynamically rendered result page, but it performs only one search navigation. Treat that bounded settling as part of the call, not as authority to reload or repeat a failed search.
+
+Treat `SEARCH_BLOCKED` as a wrong-origin, provider-denial, rate-limit, consent, CAPTCHA, anti-bot, or unrecognized-result boundary. Do not reload, repeat the search, switch providers, accept consent, or attempt a bypass automatically. Use `request_help` only when the user authorizes the blocked human step.
 
 ## Bounded execution
 

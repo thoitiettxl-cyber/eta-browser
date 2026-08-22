@@ -9,7 +9,7 @@ Eta Browser is a separately installable Android WebView browser designed for loc
 - one shared browser session that the user can take over in the Android app;
 - an authenticated newline-delimited JSON bridge on `127.0.0.1:18765`;
 - the `eta-browser` Node.js CLI;
-- a Pi extension exposing the `eta_browser_use` custom tool;
+- a Pi extension exposing the `eta_browser_use` and bounded DuckDuckGo root-SERP `web_search` custom tools;
 - bounded text and screenshot payloads compatible with Eta's browser action contract.
 - bounded semantic observation, explicit user handoff, interaction extensions, and read-only diagnostics layered additively on protocol version 2.
 
@@ -27,7 +27,7 @@ External control is opt-in, bound to loopback, authenticated, visible through a 
 
 - `app/`: Android application and browser/bridge contract tests.
 - `tools/eta-browser-cli/`: Node 20+ CLI and reusable transport/config modules.
-- `pi/eta-browser-extension/`: Pi custom-tool adapter.
+- `pi/eta-browser-extension/`: Pi custom-tool adapter for direct browser control and bounded DuckDuckGo root-SERP discovery.
 - `pi/skills/eta-browser/`: companion Pi skill.
 - `pi/skills/eta-browser-skill-forge/`: creates reviewable site-specific Pi skills from verified Eta Browser workflows.
 - `docs/`: architecture, installation, validation, and release guidance.

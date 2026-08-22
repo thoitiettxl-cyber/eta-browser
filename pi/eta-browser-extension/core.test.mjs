@@ -4,7 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
-import { BROWSER_ACTIONS, executeEtaBrowser } from "./core.mjs";
+import {
+  BROWSER_ACTIONS,
+  executeEtaBrowser,
+  executeEtaBrowserWorkflow,
+} from "./core.mjs";
 
 const TOKEN = "eta-browser-extension-test-token-123456789";
 
@@ -77,6 +81,94 @@ test("health uses private config and returns no credential", async () => {
     assert.doesNotMatch(rendered, new RegExp(TOKEN));
     assert.match(result.content[0].text, /"protocol":2/);
   }));
+});
+
+test("workflow keeps conditional actions on one temporary lease", async () => {
+  const methods = [];
+  let actionIndex = 0;
+  await withBridge((request) => {
+    methods.push(request.method);
+    if (request.method === "browser.session.acquire") {
+      return success(request, { lease_id: "workflow-secret-lease" });
+    }
+    if (request.method === "browser.session.release") {
+      assert.equal(request.lease_id, "workflow-secret-lease");
+      return success(request, { released: true });
+    }
+    assert.equal(request.method, "browser.execute");
+    assert.equal(request.lease_id, "workflow-secret-lease");
+    const index = actionIndex++;
+    if (index === 0) {
+      assert.deepEqual(request.params, { action: "navigate", url: "https://example.com" });
+      return success(request, {
+        browser: {
+          ok: true,
+          action: "navigate",
+          status: "ok",
+          url: "https://example.com/",
+        },
+        images: [],
+      });
+    }
+    assert.equal(index, 1);
+    assert.deepEqual(request.params, { action: "get_page_info" });
+    return success(request, {
+      browser: {
+        ok: true,
+        action: "get_page_info",
+        status: "ok",
+        url: "https://example.com/",
+      },
+      images: [],
+    });
+  }, async (port) => withConfig(port, undefined, async (env) => {
+    const result = await executeEtaBrowserWorkflow(
+      async (execute) => {
+        const navigation = await execute({ action: "navigate", url: "https://example.com" });
+        assert.match(navigation.content[0].text, /"url":"https:\/\/example.com\/"/);
+        return execute({ action: "get_page_info" });
+      },
+      undefined,
+      env,
+      { maxActions: 2 },
+    );
+    assert.match(result.content[0].text, /"action":"get_page_info"/);
+    assert.doesNotMatch(JSON.stringify(result), /workflow-secret-lease/);
+  }));
+  assert.deepEqual(methods, [
+    "browser.session.acquire",
+    "browser.execute",
+    "browser.execute",
+    "browser.session.release",
+  ]);
+});
+
+test("workflow rejects an action longer than its transport timeout contract", async () => {
+  const methods = [];
+  await withBridge((request) => {
+    methods.push(request.method);
+    if (request.method === "browser.session.acquire") {
+      return success(request, { lease_id: "workflow-timeout-lease" });
+    }
+    assert.equal(request.method, "browser.session.release");
+    assert.equal(request.lease_id, "workflow-timeout-lease");
+    return success(request, { released: true });
+  }, async (port) => withConfig(port, undefined, async (env) => {
+    await assert.rejects(
+      executeEtaBrowserWorkflow(
+        (execute) => execute({
+          action: "request_help",
+          prompt: "Continue",
+          timeout_ms: 300000,
+        }),
+        undefined,
+        env,
+        { requestTimeoutMs: 60_000 },
+      ),
+      /\[WORKFLOW_TIMEOUT_TOO_SHORT\]/,
+    );
+  }));
+  assert.deepEqual(methods, ["browser.session.acquire", "browser.session.release"]);
 });
 
 test("one-shot action acquires, executes, and releases temporary lease", async () => {
